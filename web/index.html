@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="sv">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BlueChart · Norden</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside>
+  <div class="brand"><span class="mark">◈</span><span>BLUECHART<small>SJÖKORTSVISARE</small></span></div>
+  <div class="eyebrow">FÖRSTA UTSNITTET</div><h1>Stavsnäs<br>& Runmarö</h1>
+  <p class="intro">Öar, sund och djup i Stockholms skärgård. Läses direkt från ditt sjökort.</p>
+  <div class="tag"><span></span> Originalfil · skrivskyddad</div>
+  <section><h2>Kartlager</h2><div id="layers">
+    <label><input type="checkbox" data-layer="land" checked><i class="swatch land"></i>Land & kust</label>
+    <label><input type="checkbox" data-layer="water" checked><i class="swatch water"></i>Djupområden & linjer</label>
+    <label><input type="checkbox" data-layer="depth" checked><span class="sample">8.4</span>Djupsiffror <small>m</small></label>
+    <label><input type="checkbox" data-layer="symbols" checked><span class="sample symbol">◇</span>Sjömärken & objekt</label>
+    <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Ortnamn & texter</label>
+    <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fiskekurvor</label>
+  </div></section>
+  <section><h2>Kartunderlag</h2><p id="source">Läser metadata…</p><p class="muted">2014 års underlag · experimentell visning</p><details><summary>Stöd & begränsningar</summary><ul id="limitations"></ul><p>Symbolerna är förenklade. Fyrsektorer och fullständiga sjökortsegenskaper visas inte. Djupområdenas färger saknar verifierad djupgränslegend.</p></details></section>
+  <section class="readout"><h2>Avkodning</h2><div id="stats" aria-live="polite">Väntar på kartdata…</div><details id="errors"><summary id="error-count">Avkodningsstatus</summary><pre id="error-list"></pre></details></section>
+  <footer>Teknisk prototyp · inte för navigation</footer>
+</aside>
+<main>
+  <header><div><span class="eyebrow">NORDEN / SVERIGE</span><strong>Stockholms skärgård</strong></div><span id="status" role="status">Startar…</span></header>
+  <div id="map"><canvas id="chart" aria-label="Sjökort med panorering och zoom" tabindex="0"></canvas>
+    <div class="map-tools"><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><button id="reset" title="Återställ utsnitt" aria-label="Återställ utsnitt">⌂</button></div>
+    <div class="north">N<span>↑</span></div>
+    <div id="tooltip" hidden></div>
+    <div class="map-bottom"><span id="scale"></span><span id="coords">Dra för att panorera · scrolla för att zooma</span></div>
+    <div id="empty" hidden>Utanför testområdet<br><button id="return">Återställ utsnittet</button></div>
+  </div>
+  <div class="bottom-bar"><span><i></i> Direkt från sjökortet</span><span id="detail">—</span><span>WGS 84 · djup i meter</span></div>
+</main>
+</body></html>

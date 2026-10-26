@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!bluechart.py
+!server.py
+!LICENSE
+!THIRD_PARTY.md
+!web/
+!web/**

@@ -1,0 +1,40 @@
+name: bluechart
+services:
+  viewer:
+    build:
+      context: /mnt/stacks/bluechart/source
+    image: local/bluechart-viewer:20261026.3
+    container_name: bluechart
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - type: bind
+        source: /mnt/user/lager/dev/buechart visualizer/norden/gmappsupp-HEU800X-Norden-unlocked.img
+        target: /charts/norden.img
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - traefik
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/metadata', timeout=5).read(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+networks:
+  traefik:
+    external: true

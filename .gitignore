@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+norden/
+artifacts/
+*.img
+*.IMG
+*.gmap
+*.mbtiles
+*.pmtiles
+*.sqlite
+*.sqlite3
+.cache/
+*.tar
+*.tar.gz
+*.zip
