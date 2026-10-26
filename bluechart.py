@@ -10,10 +10,12 @@ import collections
 import json
 import math
 import struct
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CHART = ROOT / 'norden' / 'gmappsupp-HEU800X-Norden-unlocked.img'
@@ -340,7 +342,7 @@ def decode_point(data, pos, sub, extended=False, config=(0,(0,0,0))):
 
 
 class Chart:
-    def __init__(self, path=DEFAULT_CHART):
+    def __init__(self, path=DEFAULT_CHART, overview_path=None):
         self.img = Img(path)
         self.tiles = []
         self.warnings = []
@@ -362,6 +364,29 @@ class Chart:
                 self.warnings.append(f'{name}: {exc}')
         if not self.tiles:
             raise FormatError('No readable TRE/RGN map tiles: ' + '; '.join(self.warnings[:4]))
+        self.overview = None
+        overview_path=Path(overview_path) if overview_path else ROOT/'.cache'/'overview.sqlite3'
+        if overview_path.is_file():
+            try:
+                absolute=overview_path.absolute()
+                uri=absolute.as_uri()
+                if absolute.as_posix().startswith('//'):
+                    uri='file://'+quote(absolute.as_posix(),safe='/:')
+                overview=sqlite3.connect(uri+'?mode=ro',uri=True,check_same_thread=False)
+                overview.execute('PRAGMA cache_size=-8192')
+                overview.execute('PRAGMA query_only=ON')
+                expected={'format':1,'size':self.img.size,'mtime':int(self.img.path.stat().st_mtime),'title':self.img.title}
+                if json.loads(overview.execute('SELECT payload FROM metadata').fetchone()[0])!=expected:
+                    overview.close()
+                    raise FormatError('Overview cache belongs to another chart revision')
+                self.overview=overview
+            except (OSError,ValueError,KeyError,sqlite3.Error) as exc:
+                self.warnings.append(f'Overview: {exc}')
+
+    def close(self):
+        if self.overview:
+            self.overview.close()
+        self.img.close()
 
     def tile(self, part, load=False):
         h = self.img.read_part(part, 0, min(part.size, 0x121))
@@ -559,48 +584,71 @@ class Chart:
             self.cache_bytes += cost
         return payload
 
+    def select_subdivisions(self,bbox,bits,include_fishing,cancelled):
+        selected,errors = [],[]
+        base_available = any(t['id'].startswith('B') for t in self.tiles)
+        for tile in self.tiles:
+            if cancelled and cancelled():
+                raise InterruptedError('Superseded map request')
+            if not intersects(tile['bbox'],bbox):
+                continue
+            is_base = tile['id'].startswith('B')
+            if base_available and is_base != (bits<=17):
+                continue
+            if not include_fishing and tile['id'].startswith('F'):
+                continue
+            try:
+                self.load_tile(tile)
+            except FormatError as exc:
+                errors.append(f"{tile['id']}: {exc}")
+                continue
+            available=sorted({l['bits'] for l in tile['levels'] if not l['inherited'] and l['count']})
+            if not available:
+                continue
+            chosen=min(available,key=lambda b:abs(b-bits))
+            for sub in tile['subs']:
+                if sub['bits']==chosen and intersects(sub['bbox'],bbox):
+                    selected.append((tile,sub))
+                    if len(selected)>180:
+                        return selected,errors
+        return selected,errors
+
     def features(self, bbox, bits=24, include_fishing=True, cancelled=None):
         started = time.perf_counter()
         with self.mutex:
             before = self.img.bytes_read
             hits_before,misses_before = self.cache_hits,self.cache_misses
             result, errors = [], []
-            selected = 0
-            for tile in self.tiles:
+            span=max(bbox[2]-bbox[0],bbox[3]-bbox[1])
+            overview_bits=13 if span>20 else 15 if span>5 else 17 if span>2 else bits
+            effective=min(bits,overview_bits)
+            while True:
+                selected,errors = self.select_subdivisions(bbox,effective,include_fishing,cancelled)
+                if len(selected)<=180 or effective<=17:
+                    break
+                effective-=1
+            if effective<=17 and self.overview:
+                level=min((13,15,17),key=lambda value:abs(value-effective))
+                result=[json.loads(row[0]) for row in self.overview.execute(
+                    'SELECT payload FROM overview WHERE level=? AND id IN (SELECT id FROM bounds WHERE west<=? AND east>=? AND south<=? AND north>=?)',
+                    (level,bbox[2],bbox[0],bbox[3],bbox[1]))]
+                selected=[]
+            elif effective<=17:
+                errors.append('Översiktscache saknas: kör build_overview.py för att visa kustlinjer i översikten.')
+            if len(selected)>180:
+                raise FormatError('No bounded overview level is available for this map')
+            for tile,sub in selected:
                 if cancelled and cancelled():
                     raise InterruptedError('Superseded map request')
-                if not intersects(tile['bbox'],bbox) or tile['id'].startswith('B'):
-                    continue
-                if not include_fishing and tile['id'].startswith('F'):
-                    continue
                 try:
-                    self.load_tile(tile)
+                    payload = self.decode_sub(tile,sub)
+                    errors.extend(payload['warnings'])
+                    result.extend(f for f in payload['features'] if intersects(f['bbox'],bbox))
                 except FormatError as exc:
-                    errors.append(f"{tile['id']}: {exc}")
-                    continue
-                available = sorted({l['bits'] for l in tile['levels'] if not l['inherited'] and l['count']})
-                if not available:
-                    continue
-                chosen = min(available, key=lambda b: abs(b-bits))
-                for sub in tile['subs']:
-                    if cancelled and cancelled():
-                        raise InterruptedError('Superseded map request')
-                    if sub['bits'] != chosen or not intersects(sub['bbox'],bbox):
-                        continue
-                    selected += 1
-                    if selected > 180:
-                        errors.append('För stort utsnitt för vald detaljnivå. Zooma in.')
-                        break
-                    try:
-                        payload = self.decode_sub(tile,sub)
-                        errors.extend(payload['warnings'])
-                        result.extend(f for f in payload['features'] if intersects(f['bbox'],bbox))
-                    except FormatError as exc:
-                        errors.append(f"{tile['id']}/{sub['index']}: {exc}")
-                if selected > 180:
-                    break
+                    errors.append(f"{tile['id']}/{sub['index']}: {exc}")
             return {'features':result,'warnings':errors,'stats':{
-                'features':len(result),'subdivisions':min(selected,180),
+                'features':len(result),'subdivisions':len(selected),'effective_bits':effective,
+                'overview_cache':bool(effective<=17 and self.overview),
                 'bytes_read':self.img.bytes_read-before,'total_bytes_read':self.img.bytes_read,
                 'max_read_bytes':self.img.max_read,'cache_estimate_bytes':self.cache_bytes,
                 'cache_hits':self.cache_hits-hits_before,'cache_misses':self.cache_misses-misses_before,
@@ -611,6 +659,9 @@ class Chart:
                 'parts':len(self.img.parts),'tiles':[{'id':t['id'],'bbox':t['bbox'],'levels':t['levels'],
                 'subdivisions':sum(l['count'] for l in t['levels'])} for t in self.tiles], 'warnings':self.warnings,
                 'initial_bbox':[18.68,59.23,18.81,59.30],
+                'coverage_bbox':[min(t['bbox'][0] for t in self.tiles),min(t['bbox'][1] for t in self.tiles),
+                                 max(t['bbox'][2] for t in self.tiles),max(t['bbox'][3] for t in self.tiles)],
+                'overview_available':self.overview is not None,
                 'limitations':['Experimentell typ- och symboltolkning; inte navigationsunderlag.',
                                'Vision, rutter och generell g3-kompatibilitet är inte verifierade.',
                                'NET-etiketter och vissa extra attribut stöds ännu inte.']}

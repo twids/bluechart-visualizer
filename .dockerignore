@@ -2,6 +2,7 @@
 !Dockerfile
 !bluechart.py
 !server.py
+!build_overview.py
 !LICENSE
 !THIRD_PARTY.md
 !web/

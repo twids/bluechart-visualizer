@@ -3,7 +3,7 @@ services:
   viewer:
     build:
       context: /mnt/stacks/bluechart/source
-    image: local/bluechart-viewer:20261026.3
+    image: local/bluechart-viewer:20261026.4
     container_name: bluechart
     restart: unless-stopped
     init: true
@@ -13,6 +13,7 @@ services:
     cap_drop:
       - ALL
     volumes:
+      - /mnt/user/appdata/bluechart/cache:/cache:ro
       - type: bind
         source: /mnt/user/lager/dev/buechart visualizer/norden/gmappsupp-HEU800X-Norden-unlocked.img
         target: /charts/norden.img

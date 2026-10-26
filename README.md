@@ -1,9 +1,21 @@
 # BlueChart-visare – lokal prototyp
 
 Visar verkligt kartinnehåll från `norden/gmappsupp-HEU800X-Norden-unlocked.img`
-i webbläsaren. Testområdet omfattar Stavsnäs och Runmarö, med panorering,
-zoom, djupområden, djupsiffror, ortnamn och förenklade sjömärken.
+i webbläsaren. Hela kartans täckning kan öppnas; startområdet är Stavsnäs och
+Runmarö. Visaren har panorering, zoom, djupområden, djupsiffror, ortnamn och
+förenklade sjömärken. Översikter använder en privat lokal SQLite-cache.
 Ingen installation av Python-paket behövs. Python 3.10 eller senare krävs.
+
+## Docker / Docker Compose
+
+För deployment används Docker Compose. Lägg din kartfil som
+`charts/chart.img`, eller ange dess befintliga sökväg med `CHART_FILE` i `.env`.
+Filen monteras skrivskyddat och bakas aldrig in i imagen.
+
+Se **[DEPLOYMENT.md](DEPLOYMENT.md)** för hela flödet: kataloger och rättigheter,
+imagebygge, översiktscache, start, LAN-åtkomst, kartbyte och uppdatering.
+`compose.yaml` är den fristående konfigurationen; `compose.dockhand.yaml`
+är mallen för den befintliga Unraid-/Dockhand-installationen.
 
 ## Starta på Windows
 
@@ -32,6 +44,19 @@ Dra kartan med musen, scrolla eller använd +/− för zoom. Husknappen återst�
 utsnittet. Tangentbord: piltangenter panorerar, +/− zoomar och Home återställer
 när kartan har fokus. Håll pekaren över ett punktobjekt för djup, namn, typ och
 koordinater. Lager kan slås på och av i sidofältet.
+Knappen **⊞ Visa hela kartan** öppnar hela kartans täckning. Dubbelklick zoomar
+in mot pekaren; husknappen återgår till startområdet.
+
+Bygg översiktscachen en gång före första serverstarten, efter att du lagt din egen kartfil i `norden/`:
+
+```text
+python build_overview.py
+```
+
+Den genererar `.cache/overview.sqlite3` lokalt. Cachen är kartdata och får inte
+läggas i Git. Utan cache visas en täckningskontur med en anmärkning i översikten;
+detaljuttag fungerar fortfarande. Cachen valideras mot kartfilens storlek,
+ändringstid och interna kartnamn. Bygg om den när kartfilen byts.
 
 ## Så fungerar läsningen
 
@@ -47,13 +72,15 @@ koordinater. Lager kan slås på och av i sidofältet.
 
 Vid lokal start binder servern endast `127.0.0.1`, verifierar Host och serverar bara de tre
 webbfilerna och två läs-API:er. IMG-filen kan inte hämtas över HTTP.
-API:t begränsar visningen till 18.60–18.90° E, 59.18–59.35° N.
-För stora detaljuttag ger en synlig anmärkning och högst 180 delområden.
+API:t använder kartfilens egna täckningsgränser. Stora utsnitt väljer automatiskt
+grövre nivåer, med högst 180 avkodade delområden åt gången. Översiktsgeometri
+hämtas i stället genom ett SQLite R-tree-index och läses endast för utsnittet.
+Databascachen öppnas skrivskyddat med högst cirka 8 MiB SQLite-sidcache.
 
 ## Läs-API
 
 - `GET /api/metadata`: kartnamn, filstorlek, kartdelars gränser och
-  detaljnivåer, startutsnitt, testgränser och begränsningar.
+  detaljnivåer, startutsnitt, täckningsgränser, översiktsstatus och begränsningar.
 - `GET /api/features?bbox=west,south,east,north&bits=23`: avkodade objekt
   (`kind`, numerisk Garmin-`type`, `coords` i longitud/latitud, `label`,
   `bbox`, `tile`, eventuell `depth_m`), anmärkningar och lässtatistik.
@@ -112,6 +139,7 @@ $env:BLUECHART_INTEGRATION='1'
 python -m unittest discover -s tests -v
 python measure.py
 python benchmark.py
+python build_overview.py
 python bluechart.py --bbox 18.68 59.23 18.81 59.30 --bits 24
 ```
 
@@ -139,8 +167,8 @@ stöds inte. Extra attribut läses till rätt postslut men endast djupsiffrors
 klassattribut tolkas fullt för presentation. Fel ger synliga anmärkningar.
 
 Nästa etapp är noggrannare typ- och symboltolkning, kontroll mot en
-oberoende kustlinje och större testtäckning över detaljnivåer och gränser.
-Därefter kan testområdet utökas och GPX/rutter läggas till.
+oberoende kustlinje, beständig cache även för detaljgeometri samt större
+testtäckning över detaljnivåer och gränser. Därefter kan GPX/rutter läggas till.
 
 ## Deployment på Unraid 2026-10-26
 
@@ -151,11 +179,14 @@ enligt användarens uttryckliga val. TLS hanteras av befintliga Traefik/Pangolin
   på Unraid, visad som `/mnt/stacks/bluechart/compose.yaml` i Dockhand.
 - Källkodssnapshot: samma stackkatalogs `source/`. Projektets Compose-mall
   är `compose.dockhand.yaml`; `Dockerfile` innehåller ingen kartfil.
-- Container `bluechart`, image `local/bluechart-viewer:20261026.3`, Python 3.12.15,
+- Container `bluechart`, image `local/bluechart-viewer:20261026.4`, Python 3.12.15,
   användare `10001:10001`, skrivskyddat rotfilsystem, 512 MiB minnesgräns,
   en CPU, `unless-stopped`, healthcheck och roterade loggar.
 - Originalfilen monteras direkt från projektets `norden/` på Unraid till
   `/charts/norden.img`, skrivskyddat. Filen är inte duplicerad eller inbakad i imagen.
+- Privat översiktscache: `/mnt/user/appdata/bluechart/cache/overview.sqlite3`
+  monteras skrivskyddat som `/cache/overview.sqlite3`. Databasen är cirka
+  44,4 MB och innehåller tre förenklade kustnivåer. Den ingår inte i imagen eller Git.
 - Endast Docker-nätverket `traefik`, inga publicerade hostportar.
   Pangolin-resurs `BlueChart` har backend `http://bluechart:8765`.
 - Containern binder `0.0.0.0` internt. Serverns extra Host-lista innehåller
@@ -165,7 +196,7 @@ enligt användarens uttryckliga val. TLS hanteras av befintliga Traefik/Pangolin
 Verifierat: container running/healthy utan omstarter, HTTPS och metadata-API
 HTTP 200, detaljerat kartuttag 5 261 objekt utan avkodningsanmärkningar samt
 visuell kontroll och zoom/panorering genom den publika adressen.
-Alla 13 läs-/HTTP-/integrationstester passerar efter prestandauppdateringen.
+Alla 16 läs-/HTTP-/integrationstester passerar efter uppdateringen.
 
 Vid uppdatering: uppdatera källkodssnapshoten, bygg en ny lokal image med ny
 tagg, ändra stackens image och deploya endast `bluechart` genom Dockhand.
@@ -204,9 +235,11 @@ Intern geometri före/efter jämfördes objekt för objekt via SHA-256:
 Ingen kartgeometri ändrades av parseroptimeringen. De sex decimalerna gäller
 bara det kompakta HTTP-svaret (maximalt cirka 0,06 m avrundning per koordinat).
 
-Testområdets gräns är kvar. Hela Norden kräver nästa etapp med geografiskt index,
-beständig cache och hämtning per kartdel, så att stora utsnitt inte tvingar fram
-fullständig ny avkodning. Detta är ännu inte implementerat.
+Demoområdets gräns är borttagen. Den privata översiktsdatabasen byggdes från
+2 495 delområden i samtliga 79 marina kartdelar utan avkodningsfel. På Unraid
+tog ett översiktsuttag med 9 666 förenklade landytor cirka 0,64 s. Detaljuttag
+i Göteborg, Bergen, Helsingfors och Köpenhamn verifierades utan avkodningsfel.
+Detta verifierar läsning i dessa områden, inte varje objekts navigationsnoggrannhet.
 
 ## GitHub och kartdata
 

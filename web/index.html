@@ -4,7 +4,7 @@
 <body>
 <aside>
   <div class="brand"><span class="mark">◈</span><span>BLUECHART<small>SJÖKORTSVISARE</small></span></div>
-  <div class="eyebrow">FÖRSTA UTSNITTET</div><h1>Stavsnäs<br>& Runmarö</h1>
+  <div class="eyebrow">STARTOMRÅDE</div><h1>Stavsnäs<br>& Runmarö</h1>
   <p class="intro">Öar, sund och djup i Stockholms skärgård. Läses direkt från ditt sjökort.</p>
   <div class="tag"><span></span> Originalfil · skrivskyddad</div>
   <section><h2>Kartlager</h2><div id="layers">
@@ -20,13 +20,13 @@
   <footer>Teknisk prototyp · inte för navigation</footer>
 </aside>
 <main>
-  <header><div><span class="eyebrow">NORDEN / SVERIGE</span><strong>Stockholms skärgård</strong></div><span id="status" role="status">Startar…</span></header>
+  <header><div><span class="eyebrow">GARMIN BLUECHART</span><strong>Norden · Northern Europe</strong></div><span id="status" role="status">Startar…</span></header>
   <div id="map"><canvas id="chart" aria-label="Sjökort med panorering och zoom" tabindex="0"></canvas>
-    <div class="map-tools"><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><button id="reset" title="Återställ utsnitt" aria-label="Återställ utsnitt">⌂</button></div>
+    <div class="map-tools"><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><button id="reset" title="Återställ utsnitt" aria-label="Återställ utsnitt">⌂</button><button id="coverage" title="Visa hela kartans täckning" aria-label="Visa hela kartan">⊞</button></div>
     <div class="north">N<span>↑</span></div>
     <div id="tooltip" hidden></div>
     <div class="map-bottom"><span id="scale"></span><span id="coords">Dra för att panorera · scrolla för att zooma</span></div>
-    <div id="empty" hidden>Utanför testområdet<br><button id="return">Återställ utsnittet</button></div>
+    <div id="empty" hidden>Ingen kartdata i utsnittet<br><button id="return">Visa hela kartan</button></div>
   </div>
   <div class="bottom-bar"><span><i></i> Direkt från sjökortet</span><span id="detail">—</span><span>WGS 84 · djup i meter</span></div>
 </main>

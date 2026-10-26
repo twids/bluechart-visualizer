@@ -16,6 +16,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bluechart import (Img, Chart, FormatError, Bits, UNIT, decode_poly,
                        decode_point, deltas, sint, uint, variable_uint)
 from server import handler_for
+from build_overview import simplify
 
 
 def fixture(path):
@@ -101,6 +102,11 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(variable_uint(struct.pack('<H',(500<<2)|2),0),(500,2))
         with self.assertRaises(FormatError):variable_uint(b'\0',0)
 
+    def test_overview_simplification_preserves_large_outline(self):
+        ring=[[0,0],[.25,0],[.5,0],[1,0],[1,1],[.5,1],[0,1]]
+        simplified=simplify(ring,.01)
+        self.assertEqual(set(map(tuple,simplified)),{(0,0),(1,0),(1,1),(0,1)})
+
     def test_buffered_bits_match_reference_across_word_boundaries(self):
         data=bytes(range(256));reader=Bits(data);value=int.from_bytes(data,'little');pos=0
         while reader.remaining:
@@ -163,9 +169,30 @@ class HttpTests(unittest.TestCase):
         self.assertNotIn('label_ref',f)
         self.assertNotIn('bbox',f)
 
+    def test_requests_outside_old_demo_box_are_accepted(self):
+        with urllib.request.urlopen(self.url+'/api/features?bbox=5.25,60.33,5.42,60.43&bits=22') as response:
+            self.assertTrue(json.load(response)['features'])
+
 
 @unittest.skipUnless(os.environ.get('BLUECHART_INTEGRATION')=='1','Set BLUECHART_INTEGRATION=1 for local chart validation')
 class RealChartTests(unittest.TestCase):
+    def test_nordic_regions_and_overview(self):
+        chart=Chart()
+        try:
+            for name,bbox in [('Gothenburg',[11.78,57.62,11.93,57.72]),('Bergen',[5.25,60.33,5.42,60.43]),
+                              ('Helsinki',[24.89,60.10,25.02,60.18]),('Copenhagen',[12.53,55.63,12.68,55.72])]:
+                with self.subTest(region=name):
+                    result=chart.features(bbox,22,include_fishing=False)
+                    self.assertGreater(len(result['features']),100)
+                    self.assertEqual(result['warnings'],[])
+                    self.assertLessEqual(result['stats']['subdivisions'],180)
+            if chart.overview:
+                result=chart.features(chart.metadata()['coverage_bbox'],24,include_fishing=False)
+                self.assertEqual(result['warnings'],[])
+                self.assertGreater(len(result['features']),50)
+                self.assertLessEqual(result['stats']['effective_bits'],17)
+        finally:chart.img.close()
+
     def test_stavsnas_geometry_soundings_and_lazy_access(self):
         chart=Chart()
         try:

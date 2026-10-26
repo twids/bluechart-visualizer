@@ -11,9 +11,6 @@ from urllib.parse import parse_qs, urlsplit
 
 from bluechart import Chart, DEFAULT_CHART, FormatError, ROOT, intersects
 
-TEST_BOUNDS = [18.60,59.18,18.90,59.35]
-
-
 def handler_for(chart, allowed_hosts=()):
     latest = collections.OrderedDict()
     request_lock = threading.Lock()
@@ -46,7 +43,7 @@ def handler_for(chart, allowed_hosts=()):
             try:
                 if url.path == '/api/metadata':
                     metadata = chart.metadata()
-                    metadata['test_bounds'] = TEST_BOUNDS
+                    metadata['coverage_bounds'] = metadata.get('coverage_bbox',[-180,-85,180,85])
                     self.send(200,metadata)
                 elif url.path == '/api/features':
                     args = parse_qs(url.query)
@@ -54,13 +51,14 @@ def handler_for(chart, allowed_hosts=()):
                     bits = int(args.get('bits',['24'])[0])
                     if (len(bbox) != 4 or not all(math.isfinite(v) for v in bbox)
                         or not -180 <= bbox[0] < bbox[2] <= 180
-                        or not -85 <= bbox[1] < bbox[3] <= 85 or not 17 <= bits <= 24):
+                        or not -85 <= bbox[1] < bbox[3] <= 85 or not 11 <= bits <= 24):
                         raise ValueError('Invalid bbox or detail level')
-                    if not intersects(bbox,TEST_BOUNDS):
-                        self.send(200,{'features':[],'warnings':['Utanför testområdet. Återställ utsnittet.'],'stats':{}})
+                    coverage = chart.metadata().get('coverage_bbox',[-180,-85,180,85])
+                    if not intersects(bbox,coverage):
+                        self.send(200,{'features':[],'warnings':['Utanför kartans täckning.'],'stats':{}})
                         return
-                    clipped = [max(bbox[0],TEST_BOUNDS[0]),max(bbox[1],TEST_BOUNDS[1]),
-                               min(bbox[2],TEST_BOUNDS[2]),min(bbox[3],TEST_BOUNDS[3])]
+                    clipped = [max(bbox[0],coverage[0]),max(bbox[1],coverage[1]),
+                               min(bbox[2],coverage[2]),min(bbox[3],coverage[3])]
                     client = args.get('client',[''])[0]
                     generation = int(args.get('generation',['0'])[0])
                     if len(client)>64 or generation<0:
@@ -109,8 +107,9 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--bind',default='127.0.0.1',help='Bind address; container deployments use 0.0.0.0')
     parser.add_argument('--allowed-host',action='append',default=[],help='Additional exact Host header accepted behind the proxy')
+    parser.add_argument('--overview',type=Path,help='Private precomputed overview cache')
     args = parser.parse_args()
-    chart = Chart(args.chart)
+    chart = Chart(args.chart,args.overview)
     try:
         with ThreadingHTTPServer((args.bind,args.port),handler_for(chart,args.allowed_host)) as server:
             server.daemon_threads = True
@@ -119,7 +118,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        chart.img.close()
+        chart.close()
 
 
 if __name__ == '__main__':
