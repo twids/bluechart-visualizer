@@ -55,7 +55,7 @@ def handler_for(chart, allowed_hosts=()):
                         raise ValueError('Invalid bbox or detail level')
                     coverage = chart.metadata().get('coverage_bbox',[-180,-85,180,85])
                     if not intersects(bbox,coverage):
-                        self.send(200,{'features':[],'warnings':['Utanför kartans täckning.'],'stats':{}})
+                        self.send(200,{'features':[],'warnings':['Outside chart coverage.'],'stats':{}})
                         return
                     clipped = [max(bbox[0],coverage[0]),max(bbox[1],coverage[1]),
                                min(bbox[2],coverage[2]),min(bbox[3],coverage[3])]

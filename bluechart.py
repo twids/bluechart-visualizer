@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_CHART = ROOT / 'norden' / 'gmappsupp-HEU800X-Norden-unlocked.img'
+DEFAULT_CHART = ROOT / 'charts' / 'chart.img'
 UNIT = 360 / (1 << 24)
 
 
@@ -634,7 +634,7 @@ class Chart:
                     (level,bbox[2],bbox[0],bbox[3],bbox[1]))]
                 selected=[]
             elif effective<=17:
-                errors.append('Översiktscache saknas: kör build_overview.py för att visa kustlinjer i översikten.')
+                errors.append('Overview cache missing: run build_overview.py to display coastlines in broad views.')
             if len(selected)>180:
                 raise FormatError('No bounded overview level is available for this map')
             for tile,sub in selected:
@@ -658,19 +658,19 @@ class Chart:
         return {'title':self.img.title,'file_size':self.img.size,'block_size':self.img.block_size,
                 'parts':len(self.img.parts),'tiles':[{'id':t['id'],'bbox':t['bbox'],'levels':t['levels'],
                 'subdivisions':sum(l['count'] for l in t['levels'])} for t in self.tiles], 'warnings':self.warnings,
-                'initial_bbox':[18.68,59.23,18.81,59.30],
+                'initial_bbox':list(self.tiles[0]['bbox']),
                 'coverage_bbox':[min(t['bbox'][0] for t in self.tiles),min(t['bbox'][1] for t in self.tiles),
                                  max(t['bbox'][2] for t in self.tiles),max(t['bbox'][3] for t in self.tiles)],
                 'overview_available':self.overview is not None,
-                'limitations':['Experimentell typ- och symboltolkning; inte navigationsunderlag.',
-                               'Vision, rutter och generell g3-kompatibilitet är inte verifierade.',
-                               'NET-etiketter och vissa extra attribut stöds ännu inte.']}
+                'limitations':['Experimental type and symbol decoding; not for navigation.',
+                               'Vision, routes, and general g3 compatibility are unverified.',
+                               'NET labels and some extra attributes are not yet supported.']}
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--chart',type=Path,default=DEFAULT_CHART)
-    parser.add_argument('--bbox',type=float,nargs=4,default=[18.68,59.23,18.81,59.30])
+    parser.add_argument('--bbox',type=float,nargs=4,required=True)
     parser.add_argument('--bits',type=int,default=24)
     args = parser.parse_args()
     started = time.perf_counter()

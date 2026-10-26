@@ -18,7 +18,8 @@ The Python coordinate bitstream and point/polygon decoding are adapted from:
 
 The JavaScript Garmin IMG project was evaluated but not reused: its RGN
 reader does not decode map geometry, and its FAT logic assumes 512-byte
-blocks and contiguous allocation, unlike this chart's 32 KiB blocks.
+blocks and contiguous allocation. The reader supports variable block sizes
+and fragmented allocation.
 https://github.com/TomasHubelbauer/garmin-img
 
 No external JavaScript, fonts, image assets or online map tiles are used by the viewer.

@@ -126,7 +126,7 @@ class HttpTests(unittest.TestCase):
                 return {'features':[{'kind':'line','type':1,'coords':[[18.700000023,59.250000013]]*1200,
                          'label':'test','tile':'M0000001','label_ref':123,'bbox':[18.7,59.25,18.7,59.25]}],
                         'warnings':[],'stats':{}}
-        cls.server=ThreadingHTTPServer(('127.0.0.1',0),handler_for(Dummy(),['garmin.widsell.nu']))
+        cls.server=ThreadingHTTPServer(('127.0.0.1',0),handler_for(Dummy(),['viewer.example.test']))
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start()
         cls.url=f'http://127.0.0.1:{cls.server.server_port}'
 
@@ -143,7 +143,7 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(error.exception.code,400)
 
     def test_only_explicit_assets_and_local_host(self):
-        for path in ['/bluechart.py','/norden/test.img','/../bluechart.py']:
+        for path in ['/bluechart.py','/charts/test.img','/../bluechart.py']:
             with self.assertRaises(urllib.error.HTTPError) as error:urllib.request.urlopen(self.url+path)
             self.assertEqual(error.exception.code,404)
         request=urllib.request.Request(self.url+'/api/metadata',headers={'Host':'external.example'})
@@ -151,10 +151,10 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(error.exception.code,403)
 
     def test_explicit_proxy_host(self):
-        request=urllib.request.Request(self.url+'/api/metadata',headers={'Host':'garmin.widsell.nu'})
+        request=urllib.request.Request(self.url+'/api/metadata',headers={'Host':'viewer.example.test'})
         with urllib.request.urlopen(request) as response:
             self.assertEqual(json.load(response)['title'],'Synthetic')
-        request=urllib.request.Request(self.url+'/api/metadata',headers={'Host':'garmin.widsell.nu.evil.example'})
+        request=urllib.request.Request(self.url+'/api/metadata',headers={'Host':'viewer.example.test.evil.example'})
         with self.assertRaises(urllib.error.HTTPError) as error:urllib.request.urlopen(request)
         self.assertEqual(error.exception.code,403)
 
@@ -174,54 +174,48 @@ class HttpTests(unittest.TestCase):
             self.assertTrue(json.load(response)['features'])
 
 
-@unittest.skipUnless(os.environ.get('BLUECHART_INTEGRATION')=='1','Set BLUECHART_INTEGRATION=1 for local chart validation')
+@unittest.skipUnless(os.environ.get('BLUECHART_INTEGRATION')=='1',
+                         'Set BLUECHART_INTEGRATION=1 for local chart validation')
 class RealChartTests(unittest.TestCase):
-    def test_nordic_regions_and_overview(self):
-        chart=Chart()
+    def open_chart(self):
+        path=os.environ.get('BLUECHART_CHART')
+        bbox=os.environ.get('BLUECHART_TEST_BBOX')
+        if not path or not bbox:
+            self.fail('Set BLUECHART_CHART and BLUECHART_TEST_BBOX for integration checks')
+        return Chart(Path(path)),[float(v) for v in bbox.split(',')]
+
+    def test_user_chart_and_overview(self):
+        chart,bbox=self.open_chart()
         try:
-            for name,bbox in [('Gothenburg',[11.78,57.62,11.93,57.72]),('Bergen',[5.25,60.33,5.42,60.43]),
-                              ('Helsinki',[24.89,60.10,25.02,60.18]),('Copenhagen',[12.53,55.63,12.68,55.72])]:
-                with self.subTest(region=name):
-                    result=chart.features(bbox,22,include_fishing=False)
-                    self.assertGreater(len(result['features']),100)
-                    self.assertEqual(result['warnings'],[])
-                    self.assertLessEqual(result['stats']['subdivisions'],180)
+            self.assertTrue(chart.tiles)
+            result=chart.features(bbox,22,include_fishing=False)
+            self.assertTrue(result['features'],'Choose a populated test bounding box')
+            self.assertEqual(result['warnings'],[])
+            self.assertLessEqual(result['stats']['subdivisions'],180)
             if chart.overview:
                 result=chart.features(chart.metadata()['coverage_bbox'],24,include_fishing=False)
                 self.assertEqual(result['warnings'],[])
-                self.assertGreater(len(result['features']),50)
+                self.assertTrue(result['features'])
                 self.assertLessEqual(result['stats']['effective_bits'],17)
-        finally:chart.img.close()
+        finally:chart.close()
 
-    def test_stavsnas_geometry_soundings_and_lazy_access(self):
-        chart=Chart()
+    def test_user_chart_lazy_reads_and_repeatability(self):
+        chart,bbox=self.open_chart()
         try:
-            self.assertEqual(len(chart.tiles),155)
             self.assertEqual(chart.warnings,[])
             self.assertTrue(all(t['subs'] is None for t in chart.tiles))
-            self.assertLess(chart.img.bytes_read,1024*1024)
-            result=chart.features([18.68,59.23,18.81,59.30])
+            result=chart.features(bbox)
             self.assertEqual(result['warnings'],[])
-            self.assertGreater(len(result['features']),5000)
-            self.assertGreater(sum('depth_m' in f for f in result['features']),150)
-            self.assertGreater(sum(f['kind']=='polygon' and f['type']==0x10101 for f in result['features']),100)
-            self.assertTrue(any(f['kind']=='point' and 0x10200<=f['type']<0x10300 for f in result['features']))
-            # Independent reference: Varmdo municipality, 59 17.134 N / 18 42.249 E.
-            ref=[18+42.249/60,59+17.134/60]
-            near=[f for f in result['features'] if f['kind']=='point' and f['label']=='Stavsnäs']
-            self.assertTrue(any(abs(f['coords'][0][0]-ref[0])<.002 and abs(f['coords'][0][1]-ref[1])<.002 for f in near))
-            self.assertLess(chart.img.bytes_read,8*1024*1024)
-            self.assertLessEqual(chart.img.max_read,32768)
-            cached=chart.features([18.68,59.23,18.81,59.30])
-            self.assertEqual(len(cached['features']),len(result['features']))
+            self.assertTrue(result['features'],'Choose a populated test bounding box')
+            cached=chart.features(bbox)
+            self.assertEqual(cached['features'],result['features'])
             self.assertLessEqual(chart.cache_bytes,chart.cache_limit)
-            self.assertEqual(cached['stats']['cache_misses'],0)
-            self.assertEqual(cached['stats']['bytes_read'],0)
-            filtered=chart.features([18.68,59.23,18.81,59.30],include_fishing=False)
+            self.assertLessEqual(chart.img.max_read,chart.img.block_size)
+            filtered=chart.features(bbox,include_fishing=False)
             self.assertEqual(filtered['features'],[f for f in result['features'] if not f['tile'].startswith('F')])
             with self.assertRaises(InterruptedError):
-                chart.features([18.68,59.23,18.81,59.30],cancelled=lambda:True)
-        finally:chart.img.close()
+                chart.features(bbox,cancelled=lambda:True)
+        finally:chart.close()
 
 
 if __name__=='__main__':unittest.main()

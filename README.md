@@ -1,253 +1,122 @@
-# BlueChart-visare – lokal prototyp
+# BlueChart Viewer
 
-Visar verkligt kartinnehåll från `norden/gmappsupp-HEU800X-Norden-unlocked.img`
-i webbläsaren. Hela kartans täckning kan öppnas; startområdet är Stavsnäs och
-Runmarö. Visaren har panorering, zoom, djupområden, djupsiffror, ortnamn och
-förenklade sjömärken. Översikter använder en privat lokal SQLite-cache.
-Ingen installation av Python-paket behövs. Python 3.10 eller senare krävs.
+An experimental browser viewer for user-supplied Garmin IMG marine charts.
+Supports panning, zooming, chart coverage, depth soundings, labels, simplified
+symbols, layer controls, and a locally generated overview cache.
 
-## Docker / Docker Compose
+No chart files, extracted chart data, caches, or chart screenshots are included.
+Supply your own compatible chart and ensure you have permission to use it.
+The software license does not grant any rights to chart content.
 
-För deployment används Docker Compose. Lägg din kartfil som
-`charts/chart.img`, eller ange dess befintliga sökväg med `CHART_FILE` i `.env`.
-Filen monteras skrivskyddat och bakas aldrig in i imagen.
+## Docker Compose
 
-Se **[DEPLOYMENT.md](DEPLOYMENT.md)** för hela flödet: kataloger och rättigheter,
-imagebygge, översiktscache, start, LAN-åtkomst, kartbyte och uppdatering.
-`compose.yaml` är den fristående konfigurationen; `compose.dockhand.yaml`
-är mallen för den befintliga Unraid-/Dockhand-installationen.
+Docker Compose is the recommended deployment method. Place your chart at
+`charts/chart.img`, or set `CHART_FILE` in your local `.env` file. Chart files
+are mounted read-only and are never included in the container image.
 
-## Starta på Windows
+See [DEPLOYMENT.md](DEPLOYMENT.md) for setup, permissions, cache generation,
+network access, chart replacement, updates, and reverse proxy configuration.
 
-Öppna PowerShell i projektmappen och kör:
+## Run with Python
+
+Python 3.10 or later is required. No third-party Python packages are needed.
+Place your chart at `charts/chart.img`, then run:
+
+```sh
+python build_overview.py --chart charts/chart.img
+python server.py --chart charts/chart.img
+```
+
+Open http://127.0.0.1:8765 and stop the server with Ctrl+C.
+On Windows, `Start-Viewer.ps1` starts the server using Python from PATH:
 
 ```powershell
-.\Start-Viewer.ps1
+.\Start-Viewer.ps1 -ChartPath "C:/charts/chart.img"
 ```
 
-Öppna sedan <http://127.0.0.1:8765>. Avsluta servern med Ctrl+C.
-Startskriptet använder Codex befintliga Python-runtime om den finns,
-annars `python` från PATH. Det ändrar inga systeminställningar.
-Om datorns skriptpolicy blockerar `.ps1`, starta direkt med Python:
+For a chart stored elsewhere, pass its path with `--chart` to both commands.
+The overview is written to `.cache/overview.sqlite3`. It contains derived chart
+data and must remain private. Rebuild it whenever the chart changes. Without
+an overview cache, detailed views remain available, but broad views may show
+only the coverage boundary and a warning.
 
-```powershell
-& "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" server.py
-```
+## Controls
 
-På andra datorer med Python installerat:
+Drag to pan; scroll, double-click, or use the buttons to zoom. Arrow keys pan,
+plus/minus zoom, and Home restores the initial view when the canvas has focus.
+The coverage button fits the entire chart. Hover over point features for
+available labels, depth, type, and coordinates. Toggle layers in the sidebar.
 
-```text
-python server.py --chart "/path/to/chart.img" --port 8765
-```
+## How it works
 
-Dra kartan med musen, scrolla eller använd +/− för zoom. Husknappen återställer
-utsnittet. Tangentbord: piltangenter panorerar, +/− zoomar och Home återställer
-när kartan har fokus. Håll pekaren över ett punktobjekt för djup, namn, typ och
-koordinater. Lager kan slås på och av i sidofältet.
-Knappen **⊞ Visa hela kartan** öppnar hela kartans täckning. Dubbelklick zoomar
-in mot pekaren; husknappen återgår till startområdet.
+The reader opens chart files read-only and uses seekable reads rather than
+loading the entire file. Tile indexes are loaded on demand. Geometry and label
+caches are bounded; the overview uses a spatially indexed SQLite database.
+Large views select coarser levels and limit the number of decoded subdivisions.
 
-Bygg översiktscachen en gång före första serverstarten, efter att du lagt din egen kartfil i `norden/`:
+The viewer uses Python's standard library and browser APIs. It does not request
+external map tiles, fonts, or scripts. The local server binds to loopback by
+default and validates the HTTP Host header. It serves only the viewer assets
+and read APIs; it does not provide a download endpoint for the original IMG.
+The feature API does expose decoded chart content to connected clients.
 
-```text
-python build_overview.py
-```
+## Read API
 
-Den genererar `.cache/overview.sqlite3` lokalt. Cachen är kartdata och får inte
-läggas i Git. Utan cache visas en täckningskontur med en anmärkning i översikten;
-detaljuttag fungerar fortfarande. Cachen valideras mot kartfilens storlek,
-ändringstid och interna kartnamn. Bygg om den när kartfilen byts.
+- `GET /api/metadata`: chart metadata, coverage, initial view, overview status,
+  warnings, and limitations.
+- `GET /api/features?bbox=west,south,east,north&bits=23`: decoded features,
+  warnings, and read statistics. Coordinates use WGS 84 longitude/latitude.
+  `fishing=0` skips the fishing layer; `compact=1` reduces response size.
+  Responses support gzip. Client/generation identifiers cancel superseded views.
 
-## Så fungerar läsningen
+These APIs are experimental. Keep access appropriate to your chart permissions.
 
-- Originalfilen öppnas med `rb` och ändras aldrig. Den kopieras inte.
-- Ett litet index med filallokering, kartgränser och detaljnivåer läses vid start.
-- Detaljindex läses först när kartdelen överlappar utsnittet; högst fyra sådana
-  index behålls i minnet. Objekt hämtas med sökbara läsningar över även
-  fragmenterade block och FAT-fortsättningsposter.
-- Geometricachen har en uppskattad budget på 64 MiB och etikettcachen högst
-  8 192 poster. Hela processens minne är större; se mätningen nedan.
-- Alla beroenden ligger i Pythons standardbibliotek och webbläsaren.
-  Inga externa kartplattor, teckensnitt eller tjänster används under visning.
+## Validation
 
-Vid lokal start binder servern endast `127.0.0.1`, verifierar Host och serverar bara de tre
-webbfilerna och två läs-API:er. IMG-filen kan inte hämtas över HTTP.
-API:t använder kartfilens egna täckningsgränser. Stora utsnitt väljer automatiskt
-grövre nivåer, med högst 180 avkodade delområden åt gången. Översiktsgeometri
-hämtas i stället genom ett SQLite R-tree-index och läses endast för utsnittet.
-Databascachen öppnas skrivskyddat med högst cirka 8 MiB SQLite-sidcache.
+Synthetic tests require no chart file:
 
-## Läs-API
-
-- `GET /api/metadata`: kartnamn, filstorlek, kartdelars gränser och
-  detaljnivåer, startutsnitt, täckningsgränser, översiktsstatus och begränsningar.
-- `GET /api/features?bbox=west,south,east,north&bits=23`: avkodade objekt
-  (`kind`, numerisk Garmin-`type`, `coords` i longitud/latitud, `label`,
-  `bbox`, `tile`, eventuell `depth_m`), anmärkningar och lässtatistik.
-  `fishing=0` hoppar över fiskekartans avkodning; `compact=1` utelämnar interna
-  fält och avrundar endast överförda koordinater till sex decimaler.
-  Webbläsaren skickar ett slumpat `client`-id och stigande `generation` så att
-  servern kan avbryta äldre utsnitt som ersatts av nyare. HTTP-svar stöder gzip.
-
-API:t använder grader WGS 84. Canvas använder Mercatorprojektion och
-växlar mellan kartans upplösningsnivåer. Dessa API:er är prototypgränssnitt.
-
-## Kartanalys 2026-10-26
-
-Kartnamnet är **HXEU800X – Northern Europe v2014.0**. Behållaren har 32 KiB
-block, 468 interna filer, 155 TRE/RGN-kartdelar och sammanlagt 651 311
-delområdesposter. Detta identifierar kartan, men bekräftar inte generellt
-stöd för alla produkter som marknadsförts som g2 eller g3.
-
-Baslinje före prestandauppdateringen, för testuttaget
-`18.68,59.23,18.81,59.30`, upplösning 24:
-
-| Mätning på denna Windows-dator | Resultat |
-|---|---:|
-| Originalfil | 2 033 713 152 byte |
-| Lästa data vid start | 428 658 byte |
-| Lästa data inklusive första detaljuttaget | 3 032 904 byte |
-| Största enskilda fysiska läsning | 32 768 byte |
-| Första detaljuttag | cirka 1,06 s |
-| Pythonprocessens arbetsminne efter uttaget | cirka 107 MB |
-| Returnerade objekt | 5 261 |
-| Djupsiffror | 171, från 0,7 till 86 m |
-| Avkodningsanmärkningar för testuttaget | 0 |
-
-Detta är en lokal mätning med operativsystemets filcache; ingen garanti för
-kall diskläsning eller andra datorers tider. Geometricachen rymmer inte hela
-detta detaljuttag samtidigt; upprepad hämtning kan därför läsa om data.
-Maskinläsbara resultat sparas i `artifacts/measurements.json` av `measure.py`.
-Se prestandauppdateringen nedan för den nu deployade versionen.
-
-En Stavsnäs-punkt avkodas till cirka 59.28669° N, 18.70401° E. Den ligger
-ungefär 125 m från [Värmdö kommuns publicerade hamnposition](https://www.varmdo.se/varmdohamnar/stavsnasvinterhamn.4.1524f1c618a8d1d9fee45c6d.html),
-59°17.134′ N, 18°42.249′ E. Punkten är en ort-/kartetikett, inte samma
-objekt som hamnpositionen. Det är en rimlighetskontroll av koordinater och
-område, inte en verifiering av exakt kustlinje, djup eller navigationsnoggrannhet.
-
-Webbläsartest i Edge/Chromium kontrollerar verklig ritning, panorering,
-knapp-/hjulzoom, tangentbord, återställning, lager, smalare fönster och
-frånvaro av JavaScript-fel och externa resursanrop. Bilder finns under
-`artifacts/` efter testet.
-
-## Tester och analys
-
-```powershell
+```sh
 python -m unittest discover -s tests -v
-$env:BLUECHART_INTEGRATION='1'
-python -m unittest discover -s tests -v
-python measure.py
-python benchmark.py
-python build_overview.py
-python bluechart.py --bbox 18.68 59.23 18.81 59.30 --bits 24
 ```
 
-De syntetiska testerna kräver ingen kartfil och täcker fragmenterade block,
-fortsättningsposter, signerade koordinater och deltan, djupattribut,
-ofullständiga poster samt HTTP-validering och filåtkomstbegränsning.
-Integrationstestet använder användarens befintliga fil.
+Optional integration checks use a separately supplied chart. Set
+`BLUECHART_INTEGRATION=1`, `BLUECHART_CHART` to its path, and
+`BLUECHART_TEST_BBOX` to a small populated area as `west,south,east,north`.
+Then run the same test command. These checks do not establish general product
+compatibility or navigational accuracy.
 
-Valfritt webbläsartest, med servern igång och Playwright tillgängligt:
+For local measurements, choose a small populated bounding box within your chart:
 
-```text
+```sh
+python measure.py --chart charts/chart.img --bbox WEST SOUTH EAST NORTH
+python benchmark.py --chart charts/chart.img --bbox WEST SOUTH EAST NORTH
+```
+
+Optional browser checks require Playwright and a running viewer:
+
+```sh
 node tests/browser-smoke.cjs
 ```
 
-Standardkanal är installerad Microsoft Edge. `BLUECHART_BROWSER=chrome`
-väljer Chrome. `BLUECHART_URL` väljer annan lokal testport.
+Set `BLUECHART_BROWSER` to an installed Playwright browser channel and
+`BLUECHART_URL` to the local viewer URL if needed. Generated measurements and
+screenshots stay in the ignored `artifacts/` directory and must not be published
+with chart content.
 
-## Begränsningar och nästa steg
+## Limitations
 
-Detta är en teknisk prototyp, inte navigationsunderlag. Symbolerna är
-förenklade och djupområdenas färger saknar verifierad djupgränslegend.
-Vissa objekt och texter utelämnas eller glesas ut för läsbarhet.
-Fyrsektorer, Vision, rutter, NET-etiketter och Huffmankodad geometri
-stöds inte. Extra attribut läses till rätt postslut men endast djupsiffrors
-klassattribut tolkas fullt för presentation. Fel ger synliga anmärkningar.
+This is a technical prototype, not a navigation tool. Symbol rendering is
+simplified. Depth-area colors do not have a verified depth legend. Some labels
+and objects may be omitted. Light sectors, Vision features, routes, NET labels,
+and Huffman-coded geometry are not fully supported. Compatibility across all
+g2/g3 products is unverified. Decoding warnings appear in the interface.
 
-Nästa etapp är noggrannare typ- och symboltolkning, kontroll mot en
-oberoende kustlinje, beständig cache även för detaljgeometri samt större
-testtäckning över detaljnivåer och gränser. Därefter kan GPX/rutter läggas till.
+## Licensing and chart content
 
-## Deployment på Unraid 2026-10-26
+See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md) for the software
+license and upstream attribution. Chart content retains its separate rights.
 
-Visaren är publicerad på **https://garmin.widsell.nu**, öppet utan inloggning
-enligt användarens uttryckliga val. TLS hanteras av befintliga Traefik/Pangolin.
-
-- Dockhand-stack `bluechart`: `/mnt/user/appdata/dockhand/stacks/bluechart/compose.yaml`
-  på Unraid, visad som `/mnt/stacks/bluechart/compose.yaml` i Dockhand.
-- Källkodssnapshot: samma stackkatalogs `source/`. Projektets Compose-mall
-  är `compose.dockhand.yaml`; `Dockerfile` innehåller ingen kartfil.
-- Container `bluechart`, image `local/bluechart-viewer:20261026.4`, Python 3.12.15,
-  användare `10001:10001`, skrivskyddat rotfilsystem, 512 MiB minnesgräns,
-  en CPU, `unless-stopped`, healthcheck och roterade loggar.
-- Originalfilen monteras direkt från projektets `norden/` på Unraid till
-  `/charts/norden.img`, skrivskyddat. Filen är inte duplicerad eller inbakad i imagen.
-- Privat översiktscache: `/mnt/user/appdata/bluechart/cache/overview.sqlite3`
-  monteras skrivskyddat som `/cache/overview.sqlite3`. Databasen är cirka
-  44,4 MB och innehåller tre förenklade kustnivåer. Den ingår inte i imagen eller Git.
-- Endast Docker-nätverket `traefik`, inga publicerade hostportar.
-  Pangolin-resurs `BlueChart` har backend `http://bluechart:8765`.
-- Containern binder `0.0.0.0` internt. Serverns extra Host-lista innehåller
-  exakt `garmin.widsell.nu` och `bluechart:8765`; lokal standardstart är fortsatt
-  begränsad till loopback.
-
-Verifierat: container running/healthy utan omstarter, HTTPS och metadata-API
-HTTP 200, detaljerat kartuttag 5 261 objekt utan avkodningsanmärkningar samt
-visuell kontroll och zoom/panorering genom den publika adressen.
-Alla 16 läs-/HTTP-/integrationstester passerar efter uppdateringen.
-
-Vid uppdatering: uppdatera källkodssnapshoten, bygg en ny lokal image med ny
-tagg, ändra stackens image och deploya endast `bluechart` genom Dockhand.
-Eftersom imagen byggs lokalt ska **Pull images** vara avstängt i Dockhand.
-Återställning: välj föregående image-tagg och redeploya. För att avpublicera,
-inaktivera endast Pangolin-resursen `BlueChart` och stoppa stacken i Dockhand.
-Kartfil och källkod ska bevaras.
-
-### Prestandauppdatering
-
-Profilering på Unraid visade CPU-arbete i bitavkodningen, en cache som evakuerade
-samma kartdelar mellan förfrågningar samt dyr JSON-serialisering för att uppskatta
-cachestorlek. Uppdateringen innehåller buffrad bitläsning, billigare storleksestimat,
-en större men fortsatt begränsad cache, hopp över avstängda fiskelager,
-avbrytning av ersatta förfrågningar och mindre gzip-komprimerade svar.
-Panorering/zoom flyttar en cachad kartbild direkt medan nya objekt hämtas;
-Mercatorkoordinater förberäknas när objekten anländer.
-
-Kontrollerat med samma utsnitt (18.60–18.90° E, 59.226107–59.303885° N),
-upplösning 22 och en CPU på Unraid:
-
-| Mätning | Före | Efter |
-|---|---:|---:|
-| Första avkodning med fiskelager, samma 7 487 objekt | 2,74 s | 1,73 s |
-| Upprepad avkodning med varm cache | — | 0,013 s |
-| Svarsstorlek med samma lager | 5,68 MB okomprimerat | cirka 0,55 MB gzip |
-
-Utan det normalt avstängda fiskelagret: 6 070 objekt, cirka 1,33 s första
-avkodning, 0,010 s med varm cache och cirka 397 kB över nätverket. Två verkliga
-HTTPS-hämtningar tog totalt 0,48 respektive 0,44 s, inklusive serverns
-serialisering, komprimering och överföring; siffran i sidofältet visar endast
-serverns kartuttag. Tider varierar med last och utsnitt.
-
-Intern geometri före/efter jämfördes objekt för objekt via SHA-256:
-`d40ac9640619b1f5a33df86774bd9385fb32a9415543ec853d1f5fce5a9a94b7`.
-Ingen kartgeometri ändrades av parseroptimeringen. De sex decimalerna gäller
-bara det kompakta HTTP-svaret (maximalt cirka 0,06 m avrundning per koordinat).
-
-Demoområdets gräns är borttagen. Den privata översiktsdatabasen byggdes från
-2 495 delområden i samtliga 79 marina kartdelar utan avkodningsfel. På Unraid
-tog ett översiktsuttag med 9 666 förenklade landytor cirka 0,64 s. Detaljuttag
-i Göteborg, Bergen, Helsingfors och Köpenhamn verifierades utan avkodningsfel.
-Detta verifierar läsning i dessa områden, inte varje objekts navigationsnoggrannhet.
-
-## GitHub och kartdata
-
-Källkod: https://github.com/twids/bluechart-visualizer
-
-Kartfilen får inte laddas upp. `norden/`, alla IMG-filer, genererade artefakter,
-kartdatabaser och arkiv är Git-ignorerade. Publicering sker med en uttrycklig
-lista över kod-, test- och dokumentationsfiler; använd aldrig `git add -f`
-för kartdata. Kartdata och skärmbilder ingår inte i repot.
-
-Se `THIRD_PARTY.md` och `LICENSE` för parserreferenser och GPL-villkor.
+Do not commit or distribute chart files, extracted geometry, overview databases,
+or screenshots containing chart content with this project. Local chart and
+cache directories, IMG files, databases, generated artifacts, and archives are
+ignored by Git. The Docker build uses an allowlist of source files and assets.

@@ -10,8 +10,9 @@ from bluechart import Chart, DEFAULT_CHART
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--chart',default=DEFAULT_CHART)
+    parser.add_argument('--bbox',type=float,nargs=4,required=True)
     args=parser.parse_args()
-    bbox=[18.60,59.226106892723635,18.90,59.30388467257629]
+    bbox=args.bbox
     for fishing in (False,True):
         chart=Chart(args.chart)
         try:

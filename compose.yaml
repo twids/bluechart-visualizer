@@ -1,0 +1,78 @@
+name: bluechart
+
+services:
+  viewer:
+    build: .
+    image: local/bluechart-viewer:latest
+    command:
+      - python
+      - server.py
+      - --bind
+      - 0.0.0.0
+      - --chart
+      - /charts/chart.img
+      - --overview
+      - /cache/overview.sqlite3
+      - --allowed-host
+      - ${PUBLIC_HOST:-localhost:8765}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8765}:8765"
+    volumes:
+      - type: bind
+        source: ${CHART_FILE:-./charts/chart.img}
+        target: /charts/chart.img
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./cache
+        target: /cache
+        read_only: true
+        bind:
+          create_host_path: false
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/metadata', timeout=5).read(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+
+  build-overview:
+    profiles: [tools]
+    build: .
+    image: local/bluechart-viewer:latest
+    command: [python, build_overview.py, --chart, /charts/chart.img, --output, /cache/overview.sqlite3]
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    network_mode: none
+    volumes:
+      - type: bind
+        source: ${CHART_FILE:-./charts/chart.img}
+        target: /charts/chart.img
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./cache
+        target: /cache
+        bind:
+          create_host_path: false

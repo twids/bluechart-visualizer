@@ -1,6 +1,8 @@
 __pycache__/
+charts/
+cache/
+.env
 *.pyc
-norden/
 artifacts/
 *.img
 *.IMG
