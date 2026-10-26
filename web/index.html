@@ -1,33 +1,34 @@
 <!doctype html>
-<html lang="sv">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BlueChart · Norden</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BlueChart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body>
 <aside>
-  <div class="brand"><span class="mark">◈</span><span>BLUECHART<small>SJÖKORTSVISARE</small></span></div>
-  <div class="eyebrow">STARTOMRÅDE</div><h1>Stavsnäs<br>& Runmarö</h1>
-  <p class="intro">Öar, sund och djup i Stockholms skärgård. Läses direkt från ditt sjökort.</p>
-  <div class="tag"><span></span> Originalfil · skrivskyddad</div>
-  <section><h2>Kartlager</h2><div id="layers">
-    <label><input type="checkbox" data-layer="land" checked><i class="swatch land"></i>Land & kust</label>
-    <label><input type="checkbox" data-layer="water" checked><i class="swatch water"></i>Djupområden & linjer</label>
-    <label><input type="checkbox" data-layer="depth" checked><span class="sample">8.4</span>Djupsiffror <small>m</small></label>
-    <label><input type="checkbox" data-layer="symbols" checked><span class="sample symbol">◇</span>Sjömärken & objekt</label>
-    <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Ortnamn & texter</label>
-    <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fiskekurvor</label>
+  <div class="brand"><span class="mark">◈</span><span>BLUECHART<small>CHART VIEWER</small></span></div>
+  <div class="eyebrow">YOUR CHART</div><h1>Explore your chart</h1>
+  <p class="intro">Browse a chart supplied by you, read directly from a local file.</p>
+  <div class="tag"><span></span> Original file · read-only</div>
+  <section><h2>Chart layers</h2><div id="layers">
+    <label><input type="checkbox" data-layer="land" checked><i class="swatch land"></i>Land & coast</label>
+    <label><input type="checkbox" data-layer="water" checked><i class="swatch water"></i>Depth areas & contours</label>
+    <label><input type="checkbox" data-layer="depth" checked><span class="sample">8.4</span>Soundings <small>m</small></label>
+    <label><input type="checkbox" data-layer="symbols" checked><span class="sample symbol">◇</span>Navigation marks & features</label>
+    <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Place names & labels</label>
+    <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fishing contours</label>
   </div></section>
-  <section><h2>Kartunderlag</h2><p id="source">Läser metadata…</p><p class="muted">2014 års underlag · experimentell visning</p><details><summary>Stöd & begränsningar</summary><ul id="limitations"></ul><p>Symbolerna är förenklade. Fyrsektorer och fullständiga sjökortsegenskaper visas inte. Djupområdenas färger saknar verifierad djupgränslegend.</p></details></section>
-  <section class="readout"><h2>Avkodning</h2><div id="stats" aria-live="polite">Väntar på kartdata…</div><details id="errors"><summary id="error-count">Avkodningsstatus</summary><pre id="error-list"></pre></details></section>
-  <footer>Teknisk prototyp · inte för navigation</footer>
+  <section><h2>Chart source</h2><p id="source">Reading metadata…</p><p class="muted">User-supplied chart · experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
+  <section class="readout"><h2>Decoding</h2><div id="stats" aria-live="polite">Waiting for chart data…</div><details id="errors"><summary id="error-count">Decodingsstatus</summary><pre id="error-list"></pre></details></section>
+  <footer>Technical prototype · not for navigation</footer>
 </aside>
 <main>
-  <header><div><span class="eyebrow">GARMIN BLUECHART</span><strong>Norden · Northern Europe</strong></div><span id="status" role="status">Startar…</span></header>
-  <div id="map"><canvas id="chart" aria-label="Sjökort med panorering och zoom" tabindex="0"></canvas>
-    <div class="map-tools"><button id="zoom-in" aria-label="Zooma in">+</button><button id="zoom-out" aria-label="Zooma ut">−</button><button id="reset" title="Återställ utsnitt" aria-label="Återställ utsnitt">⌂</button><button id="coverage" title="Visa hela kartans täckning" aria-label="Visa hela kartan">⊞</button></div>
+  <header><div><span class="eyebrow">GARMIN BLUECHART</span><strong>Local chart viewer</strong></div><span id="status" role="status">Starting…</span></header>
+  <div id="map"><canvas id="chart" aria-label="Chart with pan and zoom" tabindex="0"></canvas>
+    <div id="map-loading" role="status" aria-live="polite" hidden><span class="loading-spinner" aria-hidden="true"></span>Loading chart…</div>
+    <div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="reset" title="Reset view" aria-label="Reset view">⌂</button><button id="coverage" title="Fit chart coverage" aria-label="Fit chart coverage">⊞</button></div>
     <div class="north">N<span>↑</span></div>
     <div id="tooltip" hidden></div>
-    <div class="map-bottom"><span id="scale"></span><span id="coords">Dra för att panorera · scrolla för att zooma</span></div>
-    <div id="empty" hidden>Ingen kartdata i utsnittet<br><button id="return">Visa hela kartan</button></div>
+    <div class="map-bottom"><span id="scale"></span><span id="coords">Drag to pan · scroll to zoom</span></div>
+    <div id="empty" hidden>No chart data in this view<br><button id="return">Fit chart coverage</button></div>
   </div>
-  <div class="bottom-bar"><span><i></i> Direkt från sjökortet</span><span id="detail">—</span><span>WGS 84 · djup i meter</span></div>
+  <div class="bottom-bar"><span><i></i> Read directly from chart</span><span id="detail">—</span><span>WGS 84 · depth in meters</span></div>
 </main>
 </body></html>

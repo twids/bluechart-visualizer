@@ -2,9 +2,10 @@ name: bluechart
 services:
   viewer:
     build:
-      context: /mnt/stacks/bluechart/source
-    image: local/bluechart-viewer:20261026.4
+      context: ${BUILD_CONTEXT:-.}
+    image: ${VIEWER_IMAGE:-local/bluechart-viewer:latest}
     container_name: bluechart
+    command: [python, server.py, --bind, 0.0.0.0, --chart, /charts/chart.img, --overview, /cache/overview.sqlite3, --allowed-host, "${PUBLIC_HOST:-viewer.example.test}", --allowed-host, "bluechart:8765"]
     restart: unless-stopped
     init: true
     read_only: true
@@ -13,15 +14,20 @@ services:
     cap_drop:
       - ALL
     volumes:
-      - /mnt/user/appdata/bluechart/cache:/cache:ro
       - type: bind
-        source: /mnt/user/lager/dev/buechart visualizer/norden/gmappsupp-HEU800X-Norden-unlocked.img
-        target: /charts/norden.img
+        source: ${CACHE_DIR:-./cache}
+        target: /cache
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CHART_FILE:-./charts/chart.img}
+        target: /charts/chart.img
         read_only: true
         bind:
           create_host_path: false
     networks:
-      - traefik
+      - proxy
     mem_limit: 512m
     cpus: 1
     pids_limit: 64
@@ -37,5 +43,6 @@ services:
         max-size: 5m
         max-file: '2'
 networks:
-  traefik:
+  proxy:
+    name: ${PROXY_NETWORK:-proxy}
     external: true
