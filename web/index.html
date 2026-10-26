@@ -1,8 +1,25 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/features.js" defer></script><script src="/app.js" defer></script></head>
 <body>
+<header class="top-bar">
+  <div class="header-title"><span class="eyebrow">CHART VIEWER</span><strong>Selected chart</strong></div>
+  <form class="place-search" role="search">
+    <label for="place-query">Find a place</label>
+    <div class="search-input"><input id="place-query" type="search" placeholder="Island, harbour, town…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" aria-describedby="search-status" disabled><button id="search-clear" aria-label="Clear search" type="button">×</button><button type="submit" class="search-submit">Search</button></div>
+    <p id="search-status" class="muted" role="status" aria-live="polite">Enter at least two characters.</p>
+    <div id="search-suggestions" hidden><ul id="search-results" role="listbox" aria-label="Place suggestions" hidden></ul><button id="show-all-results" type="button">View all results · Enter</button></div>
+  </form>
+  <span id="status" role="status">Starting…</span>
+</header>
 <aside>
+  <section id="search-panel" aria-labelledby="results-heading" hidden>
+    <button id="close-results" type="button">← Back to chart settings</button>
+    <h2 id="results-heading">Search results</h2>
+    <p id="results-summary" role="status"></p>
+    <ul id="full-search-results" aria-label="Place search results"></ul>
+  </section>
+  <div id="chart-settings">
   <div class="brand"><span class="mark">◈</span><span>CHART VIEWER<small>LOCAL MAPS</small></span></div>
   <div class="eyebrow">YOUR CHART</div><h1>Explore your chart</h1>
   <p class="intro">Browse a chart supplied by you, read directly from a local file.</p>
@@ -13,20 +30,21 @@
     <label><input type="checkbox" data-layer="water" checked><i class="swatch water"></i>Depth areas & contours</label>
     <label><input type="checkbox" data-layer="depth" checked><span class="sample">8.4</span>Soundings <small>m</small></label>
     <label><input type="checkbox" data-layer="symbols" checked><span class="sample symbol">◇</span>Navigation marks & features</label>
+    <label><input type="checkbox" data-layer="unknownAreas"><i class="swatch unidentified"></i>Unidentified areas</label>
     <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Place names & labels</label>
     <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fishing contours</label>
   </div></section>
   <section><h2>Chart source</h2><p id="source">User-supplied chart</p><p class="muted">Experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
   <section class="readout"><h2>Decoding</h2><div id="stats" aria-live="polite">Waiting for chart data…</div><details id="errors"><summary id="error-count">Decoding status</summary><pre id="error-list"></pre></details></section>
   <footer>Technical prototype · not for navigation</footer>
+  </div>
 </aside>
 <main>
-  <header><div><span class="eyebrow">CHART VIEWER</span><strong>Selected chart</strong></div><span id="status" role="status">Starting…</span></header>
   <div id="map"><canvas id="chart" aria-label="Chart with pan and zoom" tabindex="0"></canvas>
     <div id="map-loading" role="status" aria-live="polite" hidden><span class="loading-spinner" aria-hidden="true"></span>Loading chart…</div>
     <div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="reset" title="Reset view" aria-label="Reset view">⌂</button><button id="coverage" title="Fit chart coverage" aria-label="Fit chart coverage">⊞</button></div>
     <div class="north">N<span>↑</span></div>
-    <div id="tooltip" hidden></div>
+    <div id="tooltip" role="tooltip" hidden></div>
     <div class="map-bottom"><span id="scale"></span><span id="coords">Drag to pan · scroll to zoom</span></div>
     <div id="empty" hidden>No chart data in this view<br><button id="return">Fit chart coverage</button></div>
   </div>

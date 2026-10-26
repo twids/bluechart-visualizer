@@ -13,6 +13,8 @@ artifacts/
 *.pmtiles
 *.sqlite
 *.sqlite3
+*.sqlite3.tmp*
+*.sqlite3-*
 .cache/
 *.tar
 *.tar.gz

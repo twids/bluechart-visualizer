@@ -37,8 +37,9 @@ upload, unlock or decryption workflow.
 
 Paths in `.env` refer to the Docker host. Relative paths resolve beside Compose;
 quote paths containing spaces. Charts are never copied into the image. Give user
-`10001:10001` read/traverse access to chart directories and read access to caches.
-Only the overview-building tool needs write access to the cache directory.
+`10001:10001` read/traverse access to chart directories and read/write access to the cache directory.
+The viewer builds missing or outdated search indexes in the background at startup;
+the overview-building tool also writes to the cache directory.
 
 ## Build and start
 
@@ -84,7 +85,7 @@ TLS and authentication belong at the proxy.
 
 Build a versioned image before deployment and keep **Pull images** disabled for
 locally built images. Deploy only this stack through Dockhand. The runtime preserves
-user `10001:10001`, read-only filesystem and mounts, dropped capabilities,
+user `10001:10001`, read-only root filesystem and chart/config mounts, writable cache mount, dropped capabilities,
 no-new-privileges, a 512 MiB limit, one CPU, PID limit, restart policy and rotated logs.
 Healthcheck is `bluechart healthcheck` and needs no interpreter or external utility.
 

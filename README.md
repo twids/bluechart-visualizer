@@ -23,7 +23,8 @@ docker compose up -d viewer
 
 Open http://localhost:8765. See [DEPLOYMENT.md](DEPLOYMENT.md) for configuration,
 per-chart overview caches, reverse proxy setup, updates and rollback.
-Charts and caches are mounted read-only in the viewer and excluded from images.
+Charts are mounted read-only; the cache is writable for automatic search indexing.
+Both are excluded from images.
 
 ## Run with Rust
 
@@ -42,7 +43,7 @@ The script builds the Rust executable if necessary.
 ## Charts and controls
 
 The selection menu lists charts discovered recursively when the server starts.
-The default chart remains selected initially. **All / Auto** selects one supported
+**All / Auto** is selected initially and selects one supported
 base chart for the entire viewport, using configured priorities and coverage.
 It falls back to the default chart, then the largest overlapping supported base.
 It does not merge overlapping base charts. The active source is shown below the menu.
@@ -63,9 +64,61 @@ No charts, product-specific examples or private deployment configuration are bun
 
 Drag to pan, scroll/double-click or use the buttons to zoom. Arrow keys pan;
 plus/minus zoom; Home restores the initial view. The coverage button fits the
-selected chart. Hover over points for available labels, depth and coordinates.
+selected chart.
+Hover over or tap points, lines and areas to inspect their readable type, chart
+label, available depth and coordinates. Unknown types retain their raw code and
+are explicitly marked as unidentified. Marine type names depend on geometry:
+the same code can identify different point, line and area features. Boundaries
+and symbols are simplified; color bands do not establish numeric depth ranges.
+Unidentified polygon outlines, including unverified chart extensions, are
+available through the optional **Unidentified areas** layer, which is off by
+default.
 Chart changes clear old objects and cancel superseded requests. Supplementary
 contours are detail-only and share the 180-subdivision request budget with the base.
+
+### Place search
+
+The **Find a place** box searches decoded names anywhere in the selected chart,
+including outside the current view. **All / Auto** searches supported base charts;
+explicit selections also allow partial base charts. Supplementary overlays are excluded.
+Use the search box at the top: type at least two characters for instant suggestions
+below the input. Click a suggestion or use Up/Down and Enter to select it. Enter
+without a highlighted suggestion (or the Search button) opens results in the left
+sidebar. Selecting a sidebar result keeps the list available for comparing places;
+Back to chart settings restores the controls. Editing the query returns to instant
+suggestions. Escape dismisses suggestions first; another Escape or the clear button
+clears the search and location highlight. Selecting a result
+centres and zooms the map without changing the chart selection. Names match without
+case or accents (`Ostergard` matches `Östergård`); exact names rank before prefixes
+and substrings. At most 20 results are shown. Results depend on decoder support.
+
+On every server startup, missing, stale or invalid search indexes are built in the
+background for each readable base chart. Existing valid indexes are reused. New or
+replaced chart files are discovered on restart. The cache directory must be writable
+by the viewer (Docker user `10001:10001`). Map browsing, health checks and searches
+against available indexes remain responsive while indexing runs; search warns
+when an index is not yet available. Progress and build failures appear in server logs. A normal stop cancels indexing
+and removes its temporary file so the next startup can retry.
+
+To force a rebuild manually, use the **same chart discovery arguments and paths**
+as the viewer so chart IDs match:
+
+```sh
+target/release/bluechart build-search --chart charts/chart.img --charts-dir charts --cache-dir cache --chart-config chart-config.example.json
+```
+
+Each `cache/ID.search.sqlite3` scans all non-inherited detail levels in ordinary
+marine/base tiles. Fishing/auxiliary tiles and depth soundings are excluded.
+Duplicate names within roughly one metre are collapsed; identical names at separate
+locations remain separate results. Large charts may take time to index.
+Indexes are published atomically; failed builds preserve the previous index and do
+not prevent other charts being indexed. A leftover `.sqlite3.tmp` file requires
+inspection before retrying. Chart revisions use chart ID, file size and modification
+time. Do not replace charts under a running viewer; restart after changes. Existing
+overview caches do not need rebuilding for this feature.
+
+Search uses no external service. Extracted names and indexes are private chart data
+and must stay outside Git and distributed images.
 
 ## How it works
 
@@ -89,6 +142,13 @@ An invalid cache revision is rejected. Missing overviews produce a visible warni
   availability and limitations. `chart=auto` returns combined supported coverage.
 - `GET /api/features?chart=ID&bbox=WEST,SOUTH,EAST,NORTH&bits=23`: decoded objects,
   warnings, active chart ID/title and statistics. Coordinates use WGS 84.
+- `GET /api/search?chart=ID&q=TEXT`: up to 20 ranked `results` with `chart_id`,
+  `chart_title`, `label`, `kind`, `type`, `coordinates` (`[lon,lat]`) and `bounds`
+  (`[west,south,east,north]`), plus `warnings` for unavailable indexes.
+  Omit `chart` for the default or use `auto` for all supported base charts.
+  Trimmed queries require 2–100 characters without control characters; malformed
+  queries, unknown charts and overlay selections return HTTP 400. Busy search
+  workers return HTTP 503. Query text is literal, including SQL wildcard characters.
 
 Omitting `chart` selects the configured default. `chart=auto` selects a base for
 the requested viewport. `overlays=ID,ID` adds only configured companions of the
@@ -106,6 +166,12 @@ cargo test --release --locked
 cargo fmt --check
 ```
 
+Feature naming and geometry inspection have synthetic checks that do not need
+chart files: `node tests/features.cjs`. The browser regression check is
+`node tests/features-browser.cjs` and requires Playwright and Microsoft Edge
+(or a Chromium channel selected with `BLUECHART_BROWSER`). It checks the actual
+viewer against an in-memory synthetic API, including touch taps and layer toggles.
+
 Synthetic tests cover fragmented files, continuation validation, embedded GMP
 headers, signed coordinates, bit boundaries, variable lengths, sounding attributes,
 truncation, cache isolation/budget, query validation and catalog selection with
@@ -114,6 +180,13 @@ synthetic files, including a deliberately invalid extra file.
 Optional browser smoke checks use `node tests/browser-smoke.cjs` with Playwright
 and a running viewer. Rust tests use synthetic data; no real-chart fixtures,
 extracted geometry, private fixture manifests or screenshots are bundled.
+
+`node tests/search-browser.cjs` checks search with a synthetic API and Playwright:
+debouncing, keyboard and mouse selection, distant locations, Auto scope, missing
+indexes, failures, superseded requests, chart changes and location highlights.
+It uses Microsoft Edge by default (`BLUECHART_BROWSER` selects another installed
+Chromium channel). Rust search tests cover accent folding, ranking, deduplication,
+query validation, scope, result limits, revisions and atomic build failure handling.
 
 Keep generated artifacts private. Use only a small cold/warm detail check and a
 two-client check for performance validation; no extensive benchmark suite is required.

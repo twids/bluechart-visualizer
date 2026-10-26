@@ -4,6 +4,7 @@ mod chart;
 mod format;
 mod img;
 mod overview;
+mod search;
 #[cfg(test)]
 mod tests;
 use crate::{
@@ -28,7 +29,7 @@ use std::{
     num::NonZeroUsize,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -67,11 +68,14 @@ enum Command {
     Serve,
     Inspect,
     BuildOverview,
+    BuildSearch,
     Healthcheck,
 }
 #[derive(Clone)]
 struct App {
     catalog: Arc<Catalog>,
+    search_root: PathBuf,
+    search_slots: Arc<tokio::sync::Semaphore>,
     hosts: Arc<Vec<String>>,
     slots: Arc<tokio::sync::Semaphore>,
     latest: Arc<Mutex<lru::LruCache<String, Arc<AtomicU64>>>>,
@@ -79,6 +83,7 @@ struct App {
 #[derive(Deserialize, Default)]
 struct Query {
     chart: Option<String>,
+    q: Option<String>,
     bbox: Option<String>,
     bits: Option<String>,
     fishing: Option<String>,
@@ -192,6 +197,14 @@ async fn handle(
                 gzip,
             )
         }
+        "/features.js" => {
+            return response(
+                StatusCode::OK,
+                include_bytes!("../web/features.js").to_vec(),
+                "text/javascript; charset=utf-8",
+                gzip,
+            )
+        }
         "/style.css" => {
             return response(
                 StatusCode::OK,
@@ -208,7 +221,7 @@ async fn handle(
                 gzip,
             )
         }
-        "/api/metadata" | "/api/features" => {}
+        "/api/metadata" | "/api/features" | "/api/search" => {}
         _ => return error(StatusCode::NOT_FOUND, "Not found"),
     }
     // Decode query values without accepting arbitrary paths or URLs.
@@ -217,6 +230,32 @@ async fn handle(
         Ok(q) => q,
         Err(_) => return error(StatusCode::BAD_REQUEST, "Invalid query"),
     };
+    if uri.path() == "/api/search" {
+        let validated = search::validate(q.q.as_deref())
+            .and_then(|text| Ok((text, search::scope(&app.catalog, q.chart.as_deref())?)));
+        let (text, indices) = match validated {
+            Ok(v) => v,
+            Err(e) => return error(StatusCode::BAD_REQUEST, &e.to_string()),
+        };
+        let permit = match app.search_slots.clone().try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, "Search busy; try again"),
+        };
+        return match tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            search::search(&app.catalog, &app.search_root, &indices, &text)
+        })
+        .await
+        {
+            Ok(payload) => response(
+                StatusCode::OK,
+                payload.to_string().into_bytes(),
+                "application/json; charset=utf-8",
+                gzip,
+            ),
+            Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Search worker failed"),
+        };
+    }
     if uri.path() == "/api/metadata" {
         return match app.catalog.metadata(q.chart.as_deref()) {
             Ok(m) => response(
@@ -435,6 +474,16 @@ async fn main() -> Result<()> {
         args.chart_config.as_deref(),
         cache,
     )?;
+    if matches!(args.command, Some(Command::BuildSearch)) {
+        for entry in &catalog.entries {
+            if entry.policy.role == "base" {
+                if let Some(chart) = &entry.chart {
+                    search::build(chart, &search::path(&args.cache_dir, &entry.id))?;
+                }
+            }
+        }
+        return Ok(());
+    }
     if matches!(args.command, Some(Command::Inspect)) {
         if let Some(b) = args.bbox {
             let c = catalog.entries[catalog.default].chart.as_ref().unwrap();
@@ -469,16 +518,40 @@ async fn main() -> Result<()> {
     hosts.extend([format!("127.0.0.1:{port}"), format!("localhost:{port}")]);
     let app = App {
         catalog: Arc::new(catalog),
+        search_root: args.cache_dir,
+        search_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         hosts: Arc::new(hosts),
         slots: Arc::new(tokio::sync::Semaphore::new(2)),
         latest: Arc::new(Mutex::new(lru::LruCache::new(
             NonZeroUsize::new(256).unwrap(),
         ))),
     };
+    // Keep HTTP/health checks and available indexes responsive during a large scan.
+    let search_catalog = app.catalog.clone();
+    let search_root = app.search_root.clone();
+    let search_cancel = Arc::new(AtomicBool::new(false));
+    let worker_cancel = search_cancel.clone();
+    tokio::task::spawn_blocking(move || {
+        search::ensure_indexes(&search_catalog, &search_root, &|| {
+            worker_cancel.load(Ordering::Relaxed)
+        })
+    });
     eprintln!("BlueChart Rust listening on {}:{port}", args.bind);
     axum::serve(listener, Router::new().fallback(handle).with_state(app))
-        .with_graceful_shutdown(async {
+        .with_graceful_shutdown(async move {
+            #[cfg(unix)]
+            {
+                let mut term =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .expect("Install SIGTERM handler");
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {},
+                    _ = term.recv() => {},
+                }
+            }
+            #[cfg(not(unix))]
             let _ = tokio::signal::ctrl_c().await;
+            search_cancel.store(true, Ordering::Relaxed);
         })
         .await?;
     Ok(())

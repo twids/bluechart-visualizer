@@ -66,7 +66,9 @@ impl<'a> Bits<'a> {
     pub fn get(&mut self, n: usize) -> Result<u32> {
         ensure!(
             n <= 32 && n <= self.remaining(),
-            "Truncated coordinate bitstream"
+            "Truncated coordinate bitstream at bit {}, need {n}, remaining {}",
+            self.pos,
+            self.remaining()
         );
         while self.available < n {
             self.register |= (self.data[self.byte] as u64) << self.available;
@@ -264,12 +266,18 @@ pub fn decode(
         }
         let extra = !extended && label & 0x400000 != 0;
         let pair = axes.iter().map(|a| a.0).sum::<usize>() + usize::from(extra);
-        while bits.remaining() >= pair {
+        // Escapes can consume more than the minimum pair width. As in the
+        // reference decoder, stop at an incomplete trailing pair; publish only
+        // complete coordinates. The declared byte length was checked above.
+        'coordinates: while bits.remaining() >= pair {
             if extra {
                 bits.get(1)?;
             }
             let mut delta = [0i64; 2];
             for (i, &(width, fixed, negative)) in axes.iter().enumerate() {
+                if bits.remaining() < width {
+                    break 'coordinates;
+                }
                 let mut v = bits.get(width)? as i64;
                 if fixed {
                     if negative {
@@ -282,6 +290,9 @@ pub fn decode(
                         extension = extension
                             .checked_add(sign - 1)
                             .ok_or_else(|| anyhow::anyhow!("Delta overflow"))?;
+                        if bits.remaining() < width {
+                            break 'coordinates;
+                        }
                         v = bits.get(width)? as i64;
                     }
                     v = if v < sign {

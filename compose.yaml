@@ -45,7 +45,6 @@ services:
       - type: bind
         source: ./cache
         target: /cache
-        read_only: true
         bind:
           create_host_path: false
     mem_limit: 512m
