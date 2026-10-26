@@ -70,21 +70,21 @@ async function load(){
   $('stats').textContent=s.features===undefined?'Outside chart coverage.':`${number(s.features)} features · ${s.overview_cache?'local overview cache':`${number(s.subdivisions)} tiles`}\n${number(Math.round(s.bytes_read/1024))} kB read · ${s.seconds.toFixed(2)} s`;
   $('stats').style.whiteSpace='pre-line';$('error-count').textContent=data.warnings.length?`${data.warnings.length} decoding warnings`:'No decoding errors in this view';$('error-list').textContent=data.warnings.join('\n');
  }catch(e){if(e.name==='AbortError'||request!==sequence)return;$('status').textContent='Could not load chart';$('error-count').textContent='Error';$('error-list').textContent=e.message;features=[];draw()}
- finally{if(request===sequence&&!drag)setLoading(false)}
+ finally{if(request===sequence&&!(drag&&drag.moved))setLoading(false)}
 }
 function schedule(delay=180){pending();clearTimeout(timer);timer=setTimeout(load,delay)}
 function zoom(factor,x=width/2,y=height/2){const before=coord(x,y);scale=Math.max(3,Math.min(1400000,scale*factor));const after=coord(x,y),a=project(before),b=project(after);center[0]+=a[0]-b[0];center[1]+=a[1]-b[1];preview();schedule()}
 canvas.addEventListener('wheel',e=>{e.preventDefault();const r=canvas.getBoundingClientRect();zoom(Math.exp(-e.deltaY*.0015),e.clientX-r.left,e.clientY-r.top)},{passive:false});
 canvas.addEventListener('dblclick',e=>{const r=canvas.getBoundingClientRect();zoom(3,e.clientX-r.left,e.clientY-r.top)});
-canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,center:[...center]};canvas.setPointerCapture(e.pointerId);$('tooltip').hidden=true});
+canvas.addEventListener('pointerdown',e=>{if(e.button!==0||e.isPrimary===false||drag)return;e.preventDefault();canvas.focus({preventScroll:true});drag={pointerId:e.pointerId,moved:false,x:e.clientX,y:e.clientY,center:[...center]};canvas.setPointerCapture(e.pointerId);$('tooltip').hidden=true});
 canvas.addEventListener('pointermove',e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const p=coord(x,y);$('coords').textContent=`${p[1].toFixed(5)}° N  ${p[0].toFixed(5)}° E`;
- if(drag){pending();clearTimeout(timer);center=[drag.center[0]-(e.clientX-drag.x)/scale,drag.center[1]+(e.clientY-drag.y)/scale];center[1]=Math.max(-175,Math.min(175,center[1]));preview();return}
+ if(drag){if(e.pointerId!==drag.pointerId)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.moved&&Math.hypot(dx,dy)<6)return;e.preventDefault();drag.moved=true;pending();clearTimeout(timer);center=[drag.center[0]-dx/scale,drag.center[1]+dy/scale];center[1]=Math.max(-175,Math.min(175,center[1]));preview();return}
  let best=null,distance=9;for(const hit of hitPoints){const d=Math.hypot(x-hit.x,y-hit.y);if(d<distance){best=hit;distance=d}}
  const tip=$('tooltip');tip.hidden=!best;if(!best)return;const f=best.f;
  const title=f.depth_m!==undefined?`Depth: ${f.depth_m} m`:f.label||({'buoy':'Navigation mark','light':'Light'}[f.symbol_detail])||'Chart feature';
  tip.replaceChildren();const strong=document.createElement('strong');strong.textContent=title;tip.append(strong,document.createTextNode(`Type 0x${f.type.toString(16)} · ${f.coords[0][1].toFixed(5)}° N, ${f.coords[0][0].toFixed(5)}° E`));tip.style.left=`${Math.max(8,Math.min(width-260,x+14))}px`;tip.style.top=`${Math.max(8,Math.min(height-90,y+14))}px`;
 });
-function endDrag(){if(drag){drag=null;schedule(0)}}
+function endDrag(e){if(!drag||e.pointerId!==drag.pointerId)return;const moved=drag.moved;drag=null;if(moved)schedule(0)}
 canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);canvas.addEventListener('lostpointercapture',endDrag);canvas.addEventListener('pointerleave',()=>{$('tooltip').hidden=true});
 canvas.addEventListener('keydown',e=>{const steps={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]};if(steps[e.key]){e.preventDefault();center[0]+=steps[e.key][0]*width/scale*.15;center[1]+=steps[e.key][1]*height/scale*.15;draw();schedule()}else if(e.key==='+'||e.key==='=')zoom(1.5);else if(e.key==='-')zoom(1/1.5);else if(e.key==='Home')fit()});
 $('zoom-in').onclick=()=>zoom(1.5);$('zoom-out').onclick=()=>zoom(1/1.5);$('reset').onclick=fit;$('coverage').onclick=fitCoverage;$('return').onclick=fitCoverage;
