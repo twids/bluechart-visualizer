@@ -1,4 +1,5 @@
 __pycache__/
+target/
 charts/
 cache/
 .env
@@ -6,6 +7,7 @@ cache/
 artifacts/
 *.img
 *.IMG
+*.[iI][mM][gG]
 *.gmap
 *.mbtiles
 *.pmtiles
@@ -15,3 +17,8 @@ artifacts/
 *.tar
 *.tar.gz
 *.zip
+
+# Private fixture manifests and local source-selection policies
+*.private.json
+fixtures.local.json
+chart-config.local.json

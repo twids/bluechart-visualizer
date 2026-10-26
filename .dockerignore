@@ -1,8 +1,9 @@
 **
 !Dockerfile
-!bluechart.py
-!server.py
-!build_overview.py
+!Cargo.toml
+!Cargo.lock
+!src/
+!src/**
 !LICENSE
 !THIRD_PARTY.md
 !web/

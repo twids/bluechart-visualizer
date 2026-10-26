@@ -3,7 +3,8 @@
 This prototype is licensed under GPL-3.0-only; see LICENSE.
 The map file is user supplied, is not part of the software, and retains its own rights.
 
-The Python coordinate bitstream and point/polygon decoding are adapted from:
+The Rust coordinate bitstream and point/polygon decoding are ported from the
+Python reference implementation and adapted from:
 
 - QMapShack, Copyright (C) 2006-2008 Oliver Eichler, GPL-3.0-or-later.
   https://github.com/Maproom/qmapshack/tree/dev/src/qmapshack/map/garmin
@@ -11,15 +12,9 @@ The Python coordinate bitstream and point/polygon decoding are adapted from:
   CMapIMG.cpp and CMapIMG.h.
 - GPXSee, Copyright (C) Martin Tůma and contributors, GPL-3.0.
   https://github.com/tumic0/GPXSee/tree/master/src/map/IMG
-  Reference files: trefile.cpp, rgnfile.cpp, subfile_img.cpp,
+  Reference files: trefile.cpp, rgnfile.cpp, subfile_img.cpp, vectortile_img.cpp,
   deltastream.cpp and style_img.cpp. Used for flag-dependent TRE7 fields,
-  variable-length integers, reserved coordinate bits, class/local/global
-  attribute lengths, marine soundings and initial marine type styles.
-
-The JavaScript Garmin IMG project was evaluated but not reused: its RGN
-reader does not decode map geometry, and its FAT logic assumes 512-byte
-blocks and contiguous allocation. The reader supports variable block sizes
-and fragmented allocation.
-https://github.com/TomasHubelbauer/garmin-img
+  GMP embedded subfile offsets, variable-length integers, reserved coordinate bits,
+  class/local/global attribute lengths, marine soundings and initial marine type styles.
 
 No external JavaScript, fonts, image assets or online map tiles are used by the viewer.

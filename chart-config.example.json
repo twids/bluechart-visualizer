@@ -1,0 +1,18 @@
+{
+  "chart.img": {
+    "role": "base",
+    "status": "supported",
+    "priority": 0
+  },
+  "region/detail.img": {
+    "role": "base",
+    "status": "partial",
+    "priority": 100
+  },
+  "region/contours.img": {
+    "role": "overlay",
+    "status": "partial",
+    "priority": 0,
+    "companion_of": "region/detail.img"
+  }
+}

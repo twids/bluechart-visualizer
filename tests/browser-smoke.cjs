@@ -37,6 +37,18 @@ const fs = require('node:fs');
  assert.notEqual(overviewBBox,initialBBox);
  assert.equal(await page.locator('#error-count').innerText(),'No decoding errors in this view');
  await action(()=>page.getByRole('button',{name:'Reset view',exact:true}).click());
+ // Switch sources rapidly while retaining a populated viewport. API coverage and
+ // the policy determine the source; no private chart names are embedded here.
+ const choices=await page.locator('#chart-select option').evaluateAll(options=>options.filter(o=>!o.disabled&&o.value!=='auto').map(o=>o.value));
+ if(choices.length>1){
+  const selected=await page.locator('#chart-select').inputValue();
+  const alternate=choices.find(id=>id!==selected);
+  const before=await action(()=>page.getByRole('button',{name:'Zoom in',exact:true}).click());
+  const switched=await action(async()=>{await page.locator('#chart-select').selectOption(alternate);await page.locator('#chart-select').selectOption(selected);await page.locator('#chart-select').selectOption('auto')});
+  assert.equal(switched,before,'Rapid chart switching should retain the viewport');
+  await page.waitForFunction(()=>document.getElementById('map-loading').hidden);
+  assert((await page.locator('#active-chart').innerText()).startsWith('Active:'));
+ }
  const out=path.resolve(__dirname,'../artifacts');fs.mkdirSync(out,{recursive:true});
  await page.screenshot({path:path.join(out,'viewer.png'),fullPage:true});
  await action(()=>page.setViewportSize({width:700,height:750}));

@@ -1,60 +1,46 @@
 # Docker Compose deployment
 
-Requires Docker with Compose v2. Python is included in the image. Run commands
-from the project directory. Supply your own compatible chart separately;
-chart content is not included with the software.
+The image runs only the Rust application; Python is retained in the repository
+as a development reference. Supply your own compatible charts separately.
 
-## 1. Supply a chart
+## Configure charts
 
 ```text
 bluechart-viewer/
   compose.yaml
   Dockerfile
+  Cargo.toml
+  Cargo.lock
+  src/
+  web/
+  chart-config.example.json
   .env
   charts/
     chart.img
+    region/
+      other.img
   cache/
-    overview.sqlite3    # generated in the next step
+    overview.sqlite3
 ```
 
-Create directories and local settings:
+Create `charts/` and `cache/`, then copy `.env.example` to `.env`.
+`CHARTS_DIR` points to a directory on the Docker host. The default file is
+`chart.img` inside that directory. To choose a differently named default, edit
+`--chart` in the viewer and overview service commands. Directory discovery is
+recursive and happens at startup; symbolic links are not followed.
 
-```sh
-mkdir charts cache
-cp .env.example .env
-```
+`CHART_CONFIG` names a JSON policy file; the sample is mounted at
+`/config/charts.json`. Keys are paths relative to `/charts`. Supported bases
+participate in Auto, higher priorities win, and `companion_of` connects an overlay
+to its base. Unknown GMP files remain partial until verified. There is no file
+upload, unlock or decryption workflow.
 
-In PowerShell, use `mkdir charts, cache` and `Copy-Item .env.example .env`.
-Place your chart at `charts/chart.img`, or change `CHART_FILE` in `.env`:
+Paths in `.env` refer to the Docker host. Relative paths resolve beside Compose;
+quote paths containing spaces. Charts are never copied into the image. Give user
+`10001:10001` read/traverse access to chart directories and read access to caches.
+Only the overview-building tool needs write access to the cache directory.
 
-```dotenv
-CHART_FILE=/path/to/your/chart.img
-```
-
-The path refers to the Docker host. With a remote Docker server, the file must
-exist on that server. Relative paths resolve beside `compose.yaml`. Quote paths
-containing spaces in `.env`.
-
-The file is mounted read-only at `/charts/chart.img` and is never baked into
-the image. Missing bind-mount paths produce an error. Chart directories,
-cache directories, and `.env` are Git-ignored. One chart is selected at a time.
-Compatibility across all g2/g3 products is unverified. This deployment workflow
-does not unlock or decrypt charts. Extract archives before use.
-
-## 2. Build and start
-
-The container runs as `10001:10001`. On Linux, this user needs read access to the
-chart and traversal access to its parent directories. Make the newly created
-cache directory writable by this user:
-
-```sh
-sudo chown 10001:10001 cache
-sudo chmod 755 cache
-```
-
-When running as root, omit `sudo`. Preserve the chart's owner and use your
-host's existing permission model to grant read access. Docker Desktop on
-Windows manages bind-mount permissions.
+## Build and start
 
 ```sh
 docker compose config --quiet
@@ -64,85 +50,57 @@ docker compose up -d viewer
 docker compose ps
 ```
 
-Open http://localhost:8765. Check the metadata endpoint:
+Open http://localhost:8765. Set `HTTP_PORT`, `BIND_ADDRESS` and `PUBLIC_HOST` in `.env`
+as needed. `PUBLIC_HOST` must exactly match the browser Host including nonstandard
+ports. Default access binds to loopback. Configure wider access deliberately;
+clients receive decoded chart content even though IMG downloads are unavailable.
+
+The default overview is `/cache/overview.sqlite3`. Additional charts use
+`/cache/ID.sqlite3`; find IDs through `/api/charts` or the `inspect` command.
+For example, to build an additional chart's overview:
 
 ```sh
-curl --fail http://localhost:8765/api/metadata
+docker compose --profile tools run --rm build-overview build-overview --chart /charts/region/other.img --output /cache/ID.sqlite3
 ```
 
-`overview_available` should be `true`. Cache generation may take time and must
-finish successfully before startup. Only the cache builder has a writable
-cache mount; the viewer mounts it read-only. The cache contains derived chart
-data and must remain private.
+The builder uses the same Rust parser, writes to a temporary database, checks
+errors and SQLite integrity, then atomically publishes the completed cache.
+It preserves an existing published cache on failure. An existing `.tmp` file
+requires inspection before retrying. Supplementary contour-only files do not
+need their own overview; they are hidden at broad scales while their base's
+cached coastline remains visible.
 
-If a build is interrupted, `cache/overview.sqlite3.tmp` may remain. Confirm that
-no builder is running, remove that incomplete temporary file, and retry.
-A completed cache is replaced only after a successful build.
+Caches are bound to title, file size and modification time. Rebuild after replacing
+a chart and restart the viewer. Do not replace chart contents underneath a running
+viewer; stop/recreate it so open file handles and cached data have the same revision.
 
-## 3. Network access
+## Reverse proxy and Dockhand
 
-The default port binds to loopback. To allow LAN access, configure your host's
-address and port in `.env`, for example:
+Use `compose.dockhand.yaml` as the template. Configure `PROXY_NETWORK`, `PUBLIC_HOST`,
+`CHARTS_DIR`, `CACHE_DIR`, `CHART_CONFIG` and `VIEWER_IMAGE` in the stack environment.
+It exposes no host port. Point the reverse proxy to `http://bluechart:8765` on the
+shared Docker network. It accepts the configured public Host plus `bluechart:8765`.
+TLS and authentication belong at the proxy.
 
-```dotenv
-BIND_ADDRESS=0.0.0.0
-HTTP_PORT=8765
-PUBLIC_HOST=viewer.example.test:8765
-```
+Build a versioned image before deployment and keep **Pull images** disabled for
+locally built images. Deploy only this stack through Dockhand. The runtime preserves
+user `10001:10001`, read-only filesystem and mounts, dropped capabilities,
+no-new-privileges, a 512 MiB limit, one CPU, PID limit, restart policy and rotated logs.
+Healthcheck is `bluechart healthcheck` and needs no interpreter or external utility.
 
-Arrange DNS or a hosts entry for your chosen hostname, then run
-`docker compose up -d viewer`. Open `http://viewer.example.test:8765`.
-Alternatively, use your host's LAN IP address in `PUBLIC_HOST`.
+## Verify, update and roll back
 
-`PUBLIC_HOST` must exactly match the browser's Host header, including a
-nonstandard port and excluding the URL scheme or path. A mismatch returns
-HTTP 403. If changing the port, update both `HTTP_PORT` and `PUBLIC_HOST`.
-The internal healthcheck continues to use port 8765.
+Verify the healthcheck, `/api/metadata`, `/api/charts`, a populated detail request,
+zoom/pan, source selection, overview and any companion layers. Old generation
+requests should return 409 and raw chart/source paths should return 404.
 
-The application has no built-in authentication. Restrict access using your
-network or an authenticated reverse proxy as appropriate for your chart's
-permissions. The API sends decoded chart content to connected clients.
+For updates, save the existing Compose file, build a new versioned image, update
+the source snapshot and image tag, validate Compose and recreate only the viewer.
+Keep the previous image and cache files. Restore the saved Compose file and
+redeploy it to roll back, including its old command and mounts when changing
+runtime languages. Merely selecting a Python image while retaining Rust commands
+is not a valid rollback.
 
-## Replace a chart
-
-1. Run `docker compose stop viewer`.
-2. Place the new chart on the host and update `CHART_FILE` in `.env`.
-3. Run `docker compose --profile tools run --rm build-overview`.
-4. Run `docker compose up -d --force-recreate viewer`.
-5. Check metadata and rendering.
-
-Always rebuild the overview for the new chart. Cache identity uses file size,
-modification time, and chart title; it is not a full content hash. Do not replace
-a file while the viewer is running. Keep the previous chart and matching cache
-separately if you need a quick rollback.
-
-## Update or stop
-
-After updating source code:
-
-```sh
-docker compose build
-docker compose stop viewer
-docker compose --profile tools run --rm build-overview
-docker compose up -d viewer
-docker compose ps
-docker compose logs --tail 50 viewer
-```
-
-`docker compose down` removes the stack's containers and network. Host chart
-and cache files remain. For reproducible rollback, retain the previous source
-or image and its matching chart/cache separately.
-
-## Dockhand and reverse proxies
-
-`compose.dockhand.yaml` is a generic proxy deployment template. Configure its
-build context, chart/cache paths, image tag, exact allowed Host header, and
-external Docker network for your environment. Its default external network is
-`proxy`; create or select the network your reverse proxy actually uses.
-The internal service endpoint is `http://bluechart:8765`. This template does
-not publish a host port. Keep production paths and domain settings in private
-local environment configuration.
-
-Build a locally tagged image from source before deploying through your stack
-manager. Disable image pulling when using a local image. Build the overview
-using the same chart and image, and mount it read-only in the viewer.
+The Rust backend, unlike its predecessor, has no Python runtime dependency.
+There is no side-by-side production migration service. Keep chart data, private
+policies and generated overview databases outside Git and the Docker build context.

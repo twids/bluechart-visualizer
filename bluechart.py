@@ -1,4 +1,4 @@
-"""Read-only Garmin IMG explorer. SPDX-License-Identifier: GPL-3.0-only.
+"""Read-only IMG explorer. SPDX-License-Identifier: GPL-3.0-only.
 
 Geometry decoding adapted from QMapShack, Copyright (C) 2006-2008
 Oliver Eichler. See THIRD_PARTY.md. No chart data is bundled with this code.
@@ -663,7 +663,7 @@ class Chart:
                                  max(t['bbox'][2] for t in self.tiles),max(t['bbox'][3] for t in self.tiles)],
                 'overview_available':self.overview is not None,
                 'limitations':['Experimental type and symbol decoding; not for navigation.',
-                               'Vision, routes, and general g3 compatibility are unverified.',
+                               '3D views, routes, and general product compatibility are unverified.',
                                'NET labels and some extra attributes are not yet supported.']}
 
 

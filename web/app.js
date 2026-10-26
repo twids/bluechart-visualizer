@@ -3,11 +3,12 @@
 const $ = id => document.getElementById(id);
 const canvas=$('chart'), ctx=canvas.getContext('2d');
 const layers=Object.fromEntries([...document.querySelectorAll('[data-layer]')].map(e=>[e.dataset.layer,e.checked]));
-const clientId=crypto.randomUUID();
+const clientId=crypto.randomUUID?.()||Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const project=([lon,lat])=>[lon,180/Math.PI*Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))];
 const unproject=([x,y])=>[x,360/Math.PI*Math.atan(Math.exp(y*Math.PI/180))-90];
 let width=canvas.clientWidth||1,height=canvas.clientHeight||1,center=project([0,0]),scale=1,meta=null,features=[],hitPoints=[],timer,controller,sequence=0,drag=null;
-let rendered=null,frame=null;
+let rendered=null,frame=null,viewReady=false;
+let selectedChart='',catalog=[],metadataSequence=0,selectedOverlays=new Set();
 const polygonColors={0x10101:'#e6dfbd',0x10102:'#cfba8e',0x10301:'#b7ca9e',0x10302:'#95c9dc',0x10303:'#a8d2e1',0x10304:'#bddce8',0x10305:'#d1e5ec',0x10306:'#e1eef0',0x10307:'#eff4f2',0x10308:'#f2f6f3',0x10905:'#ded9c4',0x10614:'#f3f6f2'};
 const polygonOrder=[0x4b,0x10106,0x10104,0x10614,0x10101,0x10102,0x10301,0x10302,0x10303,0x10304,0x10305,0x10306,0x10307,0x10308];
 const number=n=>n.toLocaleString('en-US');
@@ -15,7 +16,7 @@ function screen(p){const [x,y]=project(p);return [(x-center[0])*scale+width/2,(c
 function coord(x,y){return unproject([center[0]+(x-width/2)/scale,center[1]-(y-height/2)/scale])}
 function viewport(){const sw=coord(0,height),ne=coord(width,0);return [Math.max(-180,sw[0]),Math.max(-85,sw[1]),Math.min(180,ne[0]),Math.min(85,ne[1])]}
 function detailBits(){return Math.max(11,Math.min(24,Math.round(Math.log2(scale)+10)))}
-function fitBounds(b){if(!meta)return;const rect=canvas.getBoundingClientRect();width=rect.width;height=rect.height;const a=project(b.slice(0,2)),z=project(b.slice(2));center=[(a[0]+z[0])/2,(a[1]+z[1])/2];scale=Math.min(width/(z[0]-a[0]),height/(z[1]-a[1]))*.90;draw();schedule(0)}
+function fitBounds(b){if(!meta)return;const rect=canvas.getBoundingClientRect();width=rect.width;height=rect.height;const a=project(b.slice(0,2)),z=project(b.slice(2));center=[(a[0]+z[0])/2,(a[1]+z[1])/2];scale=Math.min(width/(z[0]-a[0]),height/(z[1]-a[1]))*.90;viewReady=true;draw();schedule(0)}
 function fit(){if(meta)fitBounds(meta.initial_bbox)}
 function fitCoverage(){if(meta)fitBounds(meta.coverage_bbox)}
 function path(f){ctx.beginPath();f.projected.forEach((p,i)=>{const x=(p[0]-center[0])*scale+width/2,y=(center[1]-p[1])*scale+height/2;if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)})}
@@ -33,7 +34,7 @@ function draw(full=true){
   path(f);ctx.closePath();ctx.fillStyle=color;ctx.fill();
  }
  for(const f of features){if(f.kind!=='line')continue;
-  const fishing=f.tile.startsWith('F'),depth=f.type>=0x10903&&f.type<=0x10905||f.type===0x10308||f.type===0x10301;
+  const fishing=f.tile.startsWith('F'),depth=f.type>=0x10903&&f.type<=0x10905||f.type===0x10308||f.type===0x10309||f.type===0x10301;
   if(fishing&&!layers.fishing||depth&&!layers.water||f.type===0x10101&&!layers.land)continue;
   path(f);ctx.lineWidth=f.type===0x10101?.85:.65;ctx.strokeStyle=depth?'#73a8bf':f.type===0x10101?'#766f57':f.type===0x1040c?'#ada79b':'#ad91af';ctx.setLineDash([0x10401,0x10402].includes(f.type)?[3,4]:[]);ctx.stroke();ctx.setLineDash([]);
  }
@@ -64,7 +65,8 @@ function setLoading(active){$('map-loading').hidden=!active;canvas.setAttribute(
 function pending(){++sequence;if(controller)controller.abort();setLoading(true)}
 async function load(){
  if(!meta)return;const request=++sequence;if(controller)controller.abort();controller=new AbortController();setLoading(true);$('status').textContent='Reading chart tiles…';
- try{const response=await fetch(`/api/features?bbox=${viewport().join(',')}&bits=${detailBits()}&fishing=${layers.fishing?1:0}&compact=1&client=${clientId}&generation=${request}`,{signal:controller.signal});const data=await response.json();if(request!==sequence)return;if(!response.ok)throw Error(data.error);
+ try{const response=await fetch(`/api/features?chart=${encodeURIComponent(selectedChart)}&overlays=${encodeURIComponent([...selectedOverlays].join(','))}&bbox=${viewport().join(',')}&bits=${detailBits()}&fishing=${layers.fishing?1:0}&compact=1&client=${clientId}&generation=${request}`,{signal:controller.signal});const data=await response.json();if(request!==sequence)return;if(!response.ok)throw Error(data.error);
+  $('active-chart').textContent=data.chart_title?`Active: ${data.chart_title}`:'';
   features=data.features;for(const f of features)f.projected=f.coords.map(project);draw();$('empty').hidden=features.length>0;
   const s=data.stats;if(s.effective_bits!==undefined)$('detail').textContent=`Detail level ${s.effective_bits} / 24`;$('status').textContent=data.warnings.length?'Showing with limitations':'Chart loaded';
   $('stats').textContent=s.features===undefined?'Outside chart coverage.':`${number(s.features)} features · ${s.overview_cache?'local overview cache':`${number(s.subdivisions)} tiles`}\n${number(Math.round(s.bytes_read/1024))} kB read · ${s.seconds.toFixed(2)} s`;
@@ -90,4 +92,15 @@ canvas.addEventListener('keydown',e=>{const steps={ArrowLeft:[-1,0],ArrowRight:[
 $('zoom-in').onclick=()=>zoom(1.5);$('zoom-out').onclick=()=>zoom(1/1.5);$('reset').onclick=fit;$('coverage').onclick=fitCoverage;$('return').onclick=fitCoverage;
 document.querySelectorAll('[data-layer]').forEach(e=>e.onchange=()=>{layers[e.dataset.layer]=e.checked;if(e.dataset.layer==='fishing'){schedule(0)}else draw()});
 new ResizeObserver(()=>{const r=canvas.getBoundingClientRect();width=r.width;height=r.height;const d=window.devicePixelRatio||1;canvas.width=Math.round(width*d);canvas.height=Math.round(height*d);draw();schedule()}).observe(canvas);
-(async()=>{try{const response=await fetch('/api/metadata');if(!response.ok)throw Error('Could not read metadata');meta=await response.json();$('source').textContent='User-supplied chart';for(const text of meta.limitations){const li=document.createElement('li');li.textContent=text;$('limitations').append(li)}fit()}catch(e){setLoading(false);$('status').textContent='Startup error';$('source').textContent=e.message}})();
+async function selectChart(id,initial=false){
+ const generation=++metadataSequence;pending();clearTimeout(timer);selectedChart=id;selectedOverlays.clear();features=[];hitPoints=[];rendered=null;$('tooltip').hidden=true;$('empty').hidden=true;$('active-chart').textContent='';
+ const previous=initial||!viewReady?null:viewport();meta=null;draw();$('source').textContent='Loading selected chart…';$('chart-overlays').replaceChildren();
+ try{const response=await fetch(`/api/metadata?chart=${encodeURIComponent(id)}`);const data=await response.json();if(generation!==metadataSequence)return;if(!response.ok)throw Error(data.error);meta=data;$('source').textContent='User-supplied chart';
+  $('limitations').replaceChildren();for(const text of [...meta.limitations,...meta.warnings]){const li=document.createElement('li');li.textContent=text;$('limitations').append(li)}
+  const entry=catalog.find(c=>c.id===id);$('chart-support').textContent=id==='auto'?'Automatically selects one supported base chart for this view.':entry?.status==='partial'?'Partial support — see limitations.':'2D chart support';
+  for(const overlay of catalog.filter(c=>c.role==='overlay'&&c.companion_of===id&&c.status!=='unreadable')){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.dataset.overlay=overlay.id;input.onchange=()=>{if(input.checked)selectedOverlays.add(overlay.id);else selectedOverlays.delete(overlay.id);schedule(0)};label.append(input,document.createTextNode(overlay.title));$('chart-overlays').append(label)}
+  const b=meta.coverage_bbox,overlaps=previous&&previous[0]<=b[2]&&previous[2]>=b[0]&&previous[1]<=b[3]&&previous[3]>=b[1];if(!initial&&overlaps){draw();schedule(0)}else fit();
+ }catch(e){if(generation!==metadataSequence)return;setLoading(false);$('status').textContent='Could not select chart';$('source').textContent=e.message;}
+}
+$('chart-select').onchange=e=>selectChart(e.target.value);
+(async()=>{try{const response=await fetch('/api/charts');if(!response.ok)throw Error('Could not read chart catalog');const data=await response.json();catalog=data.charts;const select=$('chart-select');select.replaceChildren();const auto=document.createElement('option');auto.value='auto';auto.textContent='All / Auto';select.append(auto);for(const chart of catalog){const option=document.createElement('option');option.value=chart.id;option.textContent=chart.title+(chart.role==='overlay'?' · supplementary layer':'')+(chart.status==='unreadable'?' · unavailable':'');option.disabled=chart.status==='unreadable'||chart.role==='overlay';select.append(option)}select.value=data.default_chart;await selectChart(data.default_chart,true)}catch(e){setLoading(false);$('status').textContent='Startup error';$('source').textContent=e.message}})();

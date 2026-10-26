@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BlueChart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body>
 <aside>
-  <div class="brand"><span class="mark">◈</span><span>BLUECHART<small>CHART VIEWER</small></span></div>
+  <div class="brand"><span class="mark">◈</span><span>CHART VIEWER<small>LOCAL MAPS</small></span></div>
   <div class="eyebrow">YOUR CHART</div><h1>Explore your chart</h1>
   <p class="intro">Browse a chart supplied by you, read directly from a local file.</p>
   <div class="tag"><span></span> Original file · read-only</div>
+  <section><h2>Chart selection</h2><label for="chart-select">Available on this server</label><select id="chart-select" aria-label="Select chart"></select><p id="chart-support" class="muted"></p><p id="active-chart" class="muted" aria-live="polite"></p><div id="chart-overlays"></div></section>
   <section><h2>Chart layers</h2><div id="layers">
     <label><input type="checkbox" data-layer="land" checked><i class="swatch land"></i>Land & coast</label>
     <label><input type="checkbox" data-layer="water" checked><i class="swatch water"></i>Depth areas & contours</label>
@@ -15,7 +16,7 @@
     <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Place names & labels</label>
     <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fishing contours</label>
   </div></section>
-  <section><h2>Chart source</h2><p id="source">User-supplied chart</p><p class="muted">User-supplied chart · experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
+  <section><h2>Chart source</h2><p id="source">User-supplied chart</p><p class="muted">Experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
   <section class="readout"><h2>Decoding</h2><div id="stats" aria-live="polite">Waiting for chart data…</div><details id="errors"><summary id="error-count">Decoding status</summary><pre id="error-list"></pre></details></section>
   <footer>Technical prototype · not for navigation</footer>
 </aside>

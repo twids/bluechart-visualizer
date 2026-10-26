@@ -5,7 +5,7 @@ services:
       context: ${BUILD_CONTEXT:-.}
     image: ${VIEWER_IMAGE:-local/bluechart-viewer:latest}
     container_name: bluechart
-    command: [python, server.py, --bind, 0.0.0.0, --chart, /charts/chart.img, --overview, /cache/overview.sqlite3, --allowed-host, "${PUBLIC_HOST:-viewer.example.test}", --allowed-host, "bluechart:8765"]
+    command: [serve, --chart-config, /config/charts.json, --bind, 0.0.0.0, --chart, /charts/chart.img, --charts-dir, /charts, --cache-dir, /cache, --overview, /cache/overview.sqlite3, --allowed-host, "${PUBLIC_HOST:-viewer.example.test}", --allowed-host, "bluechart:8765"]
     restart: unless-stopped
     init: true
     read_only: true
@@ -15,14 +15,20 @@ services:
       - ALL
     volumes:
       - type: bind
+        source: ${CHART_CONFIG:-./chart-config.example.json}
+        target: /config/charts.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${CACHE_DIR:-./cache}
         target: /cache
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${CHART_FILE:-./charts/chart.img}
-        target: /charts/chart.img
+        source: ${CHARTS_DIR:-./charts}
+        target: /charts
         read_only: true
         bind:
           create_host_path: false
@@ -32,7 +38,7 @@ services:
     cpus: 1
     pids_limit: 64
     healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/metadata', timeout=5).read(1)"]
+      test: [CMD, bluechart, healthcheck]
       interval: 30s
       timeout: 10s
       retries: 3

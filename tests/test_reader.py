@@ -1,4 +1,4 @@
-"""Synthetic fixtures contain no Garmin chart data."""
+"""Synthetic fixtures contain no real chart data."""
 import json
 import gzip
 import os
