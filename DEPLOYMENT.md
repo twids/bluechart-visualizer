@@ -1,7 +1,7 @@
 # Docker Compose deployment
 
-The image runs only the Rust application; Python is retained in the repository
-as a development reference. Supply your own compatible charts separately.
+The image runs the standalone Rust application. Supply your own compatible
+charts separately.
 
 ## Configure charts
 
@@ -97,10 +97,8 @@ requests should return 409 and raw chart/source paths should return 404.
 For updates, save the existing Compose file, build a new versioned image, update
 the source snapshot and image tag, validate Compose and recreate only the viewer.
 Keep the previous image and cache files. Restore the saved Compose file and
-redeploy it to roll back, including its old command and mounts when changing
-runtime languages. Merely selecting a Python image while retaining Rust commands
-is not a valid rollback.
+redeploy it to roll back, including its matching command and mounts. Keep image,
+command and configuration versions together.
 
-The Rust backend, unlike its predecessor, has no Python runtime dependency.
-There is no side-by-side production migration service. Keep chart data, private
+The application and overview builder are implemented in Rust. Keep chart data, private
 policies and generated overview databases outside Git and the Docker build context.

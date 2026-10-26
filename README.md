@@ -37,7 +37,7 @@ target/release/bluechart serve --chart charts/chart.img --charts-dir charts --ca
 
 The default listener is http://127.0.0.1:8765. On Windows use
 `Start-Viewer.ps1 -ChartPath C:/charts/chart.img -ChartsDir C:/charts`.
-The script builds the Rust executable if necessary. Python is not required in production.
+The script builds the Rust executable if necessary.
 
 ## Charts and controls
 
@@ -111,31 +111,9 @@ headers, signed coordinates, bit boundaries, variable lengths, sounding attribut
 truncation, cache isolation/budget, query validation and catalog selection with
 synthetic files, including a deliberately invalid extra file.
 
-The original Python reader and tests remain as development references.
-`tests/rust-integration.py` compares a test server against that reference using
-a private fixture manifest supplied with `--fixtures`. The manifest specifies
-local files, matching relative catalog names, test bounds and detail levels.
-The repository includes neither real-chart fixtures nor their manifests.
-A minimal fixture manifest has this structure (all values below are fictional):
-
-```json
-{
-  "fixtures": [{
-    "path": "region/detail.img",
-    "name": "region/detail.img",
-    "samples": [{"bbox": [1.2, 1.2, 1.8, 1.8], "bits": 22}]
-  }]
-}
-```
-
-Keep real manifests in an ignored directory or a `*.private.json` file, then run:
-
-```sh
-python tests/rust-integration.py --url http://127.0.0.1:8765 --charts-root charts --fixtures fixtures.private.json
-```
-
 Optional browser smoke checks use `node tests/browser-smoke.cjs` with Playwright
-and a running viewer. Tests print counts and status, never extracted geometry.
+and a running viewer. Rust tests use synthetic data; no real-chart fixtures,
+extracted geometry, private fixture manifests or screenshots are bundled.
 
 Keep generated artifacts private. Use only a small cold/warm detail check and a
 two-client check for performance validation; no extensive benchmark suite is required.

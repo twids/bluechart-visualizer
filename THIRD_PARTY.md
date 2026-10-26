@@ -3,8 +3,7 @@
 This prototype is licensed under GPL-3.0-only; see LICENSE.
 The map file is user supplied, is not part of the software, and retains its own rights.
 
-The Rust coordinate bitstream and point/polygon decoding are ported from the
-Python reference implementation and adapted from:
+The Rust coordinate bitstream and point/polygon decoding are adapted from:
 
 - QMapShack, Copyright (C) 2006-2008 Oliver Eichler, GPL-3.0-or-later.
   https://github.com/Maproom/qmapshack/tree/dev/src/qmapshack/map/garmin
