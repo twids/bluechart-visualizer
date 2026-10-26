@@ -15,12 +15,12 @@
     <label><input type="checkbox" data-layer="text" checked><span class="sample">Aa</span>Place names & labels</label>
     <label><input type="checkbox" data-layer="fishing"><span class="sample">≋</span>Extra fishing contours</label>
   </div></section>
-  <section><h2>Chart source</h2><p id="source">Reading metadata…</p><p class="muted">User-supplied chart · experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
-  <section class="readout"><h2>Decoding</h2><div id="stats" aria-live="polite">Waiting for chart data…</div><details id="errors"><summary id="error-count">Decodingsstatus</summary><pre id="error-list"></pre></details></section>
+  <section><h2>Chart source</h2><p id="source">User-supplied chart</p><p class="muted">User-supplied chart · experimental rendering</p><details><summary>Support & limitations</summary><ul id="limitations"></ul><p>Symbols are simplified. Light sectors and full chart attributes are not displayed. Depth-area colors have no verified depth legend.</p></details></section>
+  <section class="readout"><h2>Decoding</h2><div id="stats" aria-live="polite">Waiting for chart data…</div><details id="errors"><summary id="error-count">Decoding status</summary><pre id="error-list"></pre></details></section>
   <footer>Technical prototype · not for navigation</footer>
 </aside>
 <main>
-  <header><div><span class="eyebrow">GARMIN BLUECHART</span><strong>Local chart viewer</strong></div><span id="status" role="status">Starting…</span></header>
+  <header><div><span class="eyebrow">CHART VIEWER</span><strong>Selected chart</strong></div><span id="status" role="status">Starting…</span></header>
   <div id="map"><canvas id="chart" aria-label="Chart with pan and zoom" tabindex="0"></canvas>
     <div id="map-loading" role="status" aria-live="polite" hidden><span class="loading-spinner" aria-hidden="true"></span>Loading chart…</div>
     <div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="reset" title="Reset view" aria-label="Reset view">⌂</button><button id="coverage" title="Fit chart coverage" aria-label="Fit chart coverage">⊞</button></div>
