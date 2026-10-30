@@ -24,3 +24,6 @@ artifacts/
 *.private.json
 fixtures.local.json
 chart-config.local.json
+
+# Local Graphify knowledge graph
+/graphify-out/

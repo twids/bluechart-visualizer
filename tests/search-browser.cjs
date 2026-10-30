@@ -25,7 +25,7 @@ const server=http.createServer((req,res)=>{
   if(q==='missing')return json({results:[],warnings:['Search index unavailable. Run bluechart build-search.']});
   return json({results,warnings:url.searchParams.get('chart')==='auto'?['Index unavailable for second chart.']:[]});
  }
- const file={'/':'index.html','/app.js':'app.js','/features.js':'features.js','/style.css':'style.css'}[url.pathname];
+ const file={'/':'index.html','/app.js':'app.js','/features.js':'features.js','/view.js':'view.js','/style.css':'style.css'}[url.pathname];
  if(!file){res.writeHead(404);return res.end()}
  res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});res.end(fs.readFileSync(path.join(assets,file)));
 });
@@ -39,6 +39,7 @@ const server=http.createServer((req,res)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base);const input=page.getByRole('combobox',{name:'Find a place'});
   await input.waitFor({state:'visible'});await page.waitForFunction(()=>!document.getElementById('place-query').disabled);
+  await page.locator('#view-3d').click();await page.waitForFunction(()=>document.getElementById('map-loading').hidden);
   await input.fill('o');await page.waitForTimeout(350);assert.equal(searches.length,0);
   await input.fill('os');await input.fill('oste');
   await page.getByRole('option',{name:/Östergård Synthetic/}).waitFor();
@@ -64,9 +65,13 @@ const server=http.createServer((req,res)=>{
   await input.fill('slow');await page.waitForRequest(r=>r.url().includes('q=slow'));
   await page.locator('#chart-select').selectOption('second');await page.waitForFunction(()=>!document.getElementById('place-query').disabled);await page.waitForTimeout(800);
   assert.equal(await input.inputValue(),'');assert.equal(await page.locator('#search-results').getByRole('option').count(),0);assert.equal(await page.locator('#search-marker').isVisible(),false);
+  assert.equal(await page.locator('#view-3d').getAttribute('aria-pressed'),'true','chart changes retain perspective');
   await input.fill('oste');await page.locator('#search-results').getByRole('option').first().waitFor();await input.press('Escape');
   assert.equal(await input.getAttribute('aria-expanded'),'false');assert.equal(await input.inputValue(),'oste');await input.press('Escape');assert.equal(await input.inputValue(),'');
   await input.fill('oste');await page.locator('#search-results').getByRole('option').first().waitFor();await page.locator('#search-results').getByRole('option').first().click();assert.equal(await page.locator('#search-marker').isVisible(),true);
+  assert.equal(await page.locator('#view-3d').getAttribute('aria-pressed'),'true','place selection retains perspective');
+  const markerError=await page.evaluate(()=>{const p=screen(searchPlace.coordinates),el=document.getElementById('search-marker');return Math.hypot(p[0]-parseFloat(el.style.left),p[1]-parseFloat(el.style.top))});
+  assert(markerError<.01,'search marker follows the perspective camera');
   await input.fill('oste');await input.press('Enter');
   await page.locator('#full-search-results button').first().waitFor();
   assert.equal(await page.locator('#search-suggestions').isVisible(),false);

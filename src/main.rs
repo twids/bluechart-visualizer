@@ -75,6 +75,8 @@ enum Command {
 struct App {
     catalog: Arc<Catalog>,
     search_root: PathBuf,
+    search_building: Arc<AtomicBool>,
+    overview_building: Arc<AtomicBool>,
     search_slots: Arc<tokio::sync::Semaphore>,
     hosts: Arc<Vec<String>>,
     slots: Arc<tokio::sync::Semaphore>,
@@ -205,6 +207,14 @@ async fn handle(
                 gzip,
             )
         }
+        "/view.js" => {
+            return response(
+                StatusCode::OK,
+                include_bytes!("../web/view.js").to_vec(),
+                "text/javascript; charset=utf-8",
+                gzip,
+            )
+        }
         "/style.css" => {
             return response(
                 StatusCode::OK,
@@ -212,6 +222,9 @@ async fn handle(
                 "text/css; charset=utf-8",
                 gzip,
             )
+        }
+        "/api/build-status" => {
+            return response(StatusCode::OK, json!({"search": app.search_building.load(Ordering::Relaxed), "overview": app.overview_building.load(Ordering::Relaxed)}).to_string().into_bytes(), "application/json; charset=utf-8", false)
         }
         "/api/charts" => {
             return response(
@@ -519,6 +532,8 @@ async fn main() -> Result<()> {
     let app = App {
         catalog: Arc::new(catalog),
         search_root: args.cache_dir,
+        search_building: Arc::new(AtomicBool::new(false)),
+        overview_building: Arc::new(AtomicBool::new(false)),
         search_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         hosts: Arc::new(hosts),
         slots: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -531,10 +546,24 @@ async fn main() -> Result<()> {
     let search_root = app.search_root.clone();
     let search_cancel = Arc::new(AtomicBool::new(false));
     let worker_cancel = search_cancel.clone();
+    let search_building = app.search_building.clone();
     tokio::task::spawn_blocking(move || {
-        search::ensure_indexes(&search_catalog, &search_root, &|| {
-            worker_cancel.load(Ordering::Relaxed)
-        })
+        search::ensure_indexes_with_status(
+            &search_catalog,
+            &search_root,
+            &|| worker_cancel.load(Ordering::Relaxed),
+            &|active| search_building.store(active, Ordering::Relaxed),
+        )
+    });
+    let overview_catalog = app.catalog.clone();
+    let overview_cancel = search_cancel.clone();
+    let overview_building = app.overview_building.clone();
+    tokio::task::spawn_blocking(move || {
+        overview::ensure_overviews(
+            &overview_catalog,
+            &|| overview_cancel.load(Ordering::Relaxed),
+            &|active| overview_building.store(active, Ordering::Relaxed),
+        )
     });
     eprintln!("BlueChart Rust listening on {}:{port}", args.bind);
     axum::serve(listener, Router::new().fallback(handle).with_state(app))

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/features.js" defer></script><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chart Viewer</title><link rel="stylesheet" href="/style.css"><script src="/features.js" defer></script><script src="/view.js" defer></script><script src="/app.js" defer></script></head>
 <body>
 <header class="top-bar">
   <div class="header-title"><span class="eyebrow">CHART VIEWER</span><strong>Selected chart</strong></div>
@@ -10,7 +10,7 @@
     <p id="search-status" class="muted" role="status" aria-live="polite">Enter at least two characters.</p>
     <div id="search-suggestions" hidden><ul id="search-results" role="listbox" aria-label="Place suggestions" hidden></ul><button id="show-all-results" type="button">View all results · Enter</button></div>
   </form>
-  <span id="status" role="status">Starting…</span>
+  <div class="header-status"><div id="build-status" role="status" aria-live="polite" hidden><span class="loading-spinner" aria-hidden="true"></span><span id="build-status-text"></span></div><span id="status" role="status">Starting…</span></div>
 </header>
 <aside>
   <section id="search-panel" aria-labelledby="results-heading" hidden>
@@ -44,8 +44,13 @@
     <div id="map-loading" role="status" aria-live="polite" hidden><span class="loading-spinner" aria-hidden="true"></span>Loading chart…</div>
     <div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="reset" title="Reset view" aria-label="Reset view">⌂</button><button id="coverage" title="Fit chart coverage" aria-label="Fit chart coverage">⊞</button></div>
     <div class="north">N<span>↑</span></div>
+    <div class="view-controls" aria-label="Chart perspective">
+      <button id="view-3d" type="button" aria-pressed="false" aria-controls="view-tilt">3D view</button>
+      <div id="view-tilt" hidden><label for="pitch">Tilt <output id="pitch-value" for="pitch">45°</output></label><input id="pitch" type="range" min="0" max="60" step="5" value="45" aria-describedby="view-note"></div>
+      <p id="view-note" hidden>Chart plane · no terrain or seabed heights</p>
+    </div>
     <div id="tooltip" role="tooltip" hidden></div>
-    <div class="map-bottom"><span id="scale"></span><span id="coords">Drag to pan · scroll to zoom</span></div>
+    <div class="map-bottom"><span id="scale" title="Scale at the bottom of the view"></span><span id="coords">Drag to pan · scroll to zoom</span></div>
     <div id="empty" hidden>No chart data in this view<br><button id="return">Fit chart coverage</button></div>
   </div>
   <div class="bottom-bar"><span><i></i> Read directly from chart</span><span id="detail">—</span><span>WGS 84 · depth in meters</span></div>

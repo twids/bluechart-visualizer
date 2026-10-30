@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use crate::{chart::Chart, img::ReadCache};
+use crate::{catalog::Catalog, chart::Chart, img::ReadCache};
 use anyhow::{ensure, Result};
 use serde_json::json;
 use std::path::Path;
@@ -56,7 +56,35 @@ pub fn simplify(points: &[[f64; 2]], tolerance: f64) -> Vec<[f64; 2]> {
         vec![]
     }
 }
+pub fn ensure_overviews(catalog: &Catalog, cancel: &dyn Fn() -> bool, status: &dyn Fn(bool)) {
+    for entry in &catalog.entries {
+        if cancel() {
+            break;
+        }
+        if entry.policy.role != "base" {
+            continue;
+        }
+        let Some(chart) = &entry.chart else { continue };
+        let Some(path) = &chart.overview_destination else {
+            continue;
+        };
+        if chart.metadata()["overview_available"] == true {
+            continue;
+        }
+        eprintln!("Overview {}: building missing or invalid cache", entry.name);
+        status(true);
+        match build_with_cancel(chart, path, cancel) {
+            Ok(()) => chart.publish_overview(path),
+            Err(error) => eprintln!("Overview {}: build failed: {error:#}", entry.name),
+        }
+        status(false);
+    }
+}
 pub fn build(chart: &Chart, path: &Path) -> Result<()> {
+    build_with_cancel(chart, path, &|| false)
+}
+fn build_with_cancel(chart: &Chart, path: &Path, cancel: &dyn Fn() -> bool) -> Result<()> {
+    ensure!(!cancel(), "Overview build stopped during shutdown");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -66,101 +94,118 @@ pub fn build(chart: &Chart, path: &Path) -> Result<()> {
         "Incomplete overview exists; inspect {}",
         temp.display()
     );
-    let mut db = rusqlite::Connection::open(&temp)?;
-    db.execute_batch("CREATE TABLE metadata(payload TEXT); CREATE TABLE overview(id INTEGER PRIMARY KEY,level INTEGER,payload TEXT); CREATE INDEX level_idx ON overview(level); CREATE VIRTUAL TABLE bounds USING rtree(id,west,east,south,north);")?;
-    let tx = db.transaction()?;
-    let mut counts = [0usize; 3];
-    let mut labels = ReadCache::default();
-    let mut processed = 0;
-    // Prefer detailed marine tiles, not coarse B tiles or fishing/auxiliary tiles.
-    let tiles: Vec<_> = chart
-        .tiles
-        .iter()
-        .filter(|t| t.id.starts_with('M'))
-        .collect();
-    for t in tiles {
-        let Some(bits) = t
-            .levels
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp)?;
+    let built = (|| -> Result<()> {
+        let mut db = rusqlite::Connection::open(&temp)?;
+        db.execute_batch("CREATE TABLE metadata(payload TEXT); CREATE TABLE overview(id INTEGER PRIMARY KEY,level INTEGER,payload TEXT); CREATE INDEX level_idx ON overview(level); CREATE VIRTUAL TABLE bounds USING rtree(id,west,east,south,north);")?;
+        let tx = db.transaction()?;
+        let mut counts = [0usize; 3];
+        let mut labels = ReadCache::default();
+        let mut processed = 0;
+        // Prefer detailed marine tiles, not coarse B tiles or fishing/auxiliary tiles.
+        let tiles: Vec<_> = chart
+            .tiles
             .iter()
-            .filter(|l| !l.inherited)
-            .map(|l| l.bits)
-            .min()
-        else {
-            continue;
-        };
-        let subs = chart.subs(t)?;
-        for sub in subs.iter().filter(|s| s.bits == bits) {
-            let payload = chart.decode_sub(t, sub, &mut labels, &|| false)?;
-            ensure!(
-                payload.warnings.is_empty(),
-                "Overview not published: {}",
-                payload.warnings.join("; ")
-            );
-            processed += 1;
-            for f in &payload.features {
-                if f.kind != "polygon" || f.typ != 0x10101 {
-                    continue;
-                }
-                for (i, (level, tolerance)) in [(13, 0.04), (15, 0.01), (17, 0.002)]
-                    .into_iter()
-                    .enumerate()
-                {
-                    if (f.bbox[2] - f.bbox[0]).max(f.bbox[3] - f.bbox[1]) < tolerance {
+            .filter(|t| t.id.starts_with('M'))
+            .collect();
+        for t in tiles {
+            ensure!(!cancel(), "Overview build stopped during shutdown");
+            let Some(bits) = t
+                .levels
+                .iter()
+                .filter(|l| !l.inherited)
+                .map(|l| l.bits)
+                .min()
+            else {
+                continue;
+            };
+            let subs = chart.subs(t)?;
+            for sub in subs.iter().filter(|s| s.bits == bits) {
+                ensure!(!cancel(), "Overview build stopped during shutdown");
+                let payload = chart.decode_sub(t, sub, &mut labels, cancel)?;
+                ensure!(
+                    payload.warnings.is_empty(),
+                    "Overview not published: {}",
+                    payload.warnings.join("; ")
+                );
+                processed += 1;
+                for f in &payload.features {
+                    if f.kind != "polygon" || f.typ != 0x10101 {
                         continue;
                     }
-                    let points = simplify(&f.coords, tolerance);
-                    if points.is_empty() {
-                        continue;
-                    }
-                    let mut feature = f.clone();
-                    feature.coords = points
+                    for (i, (level, tolerance)) in [(13, 0.04), (15, 0.01), (17, 0.002)]
                         .into_iter()
-                        .map(|p| p.map(|v| (v * 1e6).round() / 1e6))
-                        .collect();
-                    feature.label.clear();
-                    tx.execute(
-                        "INSERT INTO overview(level,payload) VALUES (?,?)",
-                        rusqlite::params![level, serde_json::to_string(&feature)?],
-                    )?;
-                    tx.execute(
-                        "INSERT INTO bounds VALUES (?,?,?,?,?)",
-                        rusqlite::params![
-                            tx.last_insert_rowid(),
-                            f.bbox[0],
-                            f.bbox[2],
-                            f.bbox[1],
-                            f.bbox[3]
-                        ],
-                    )?;
-                    counts[i] += 1;
+                        .enumerate()
+                    {
+                        if (f.bbox[2] - f.bbox[0]).max(f.bbox[3] - f.bbox[1]) < tolerance {
+                            continue;
+                        }
+                        let points = simplify(&f.coords, tolerance);
+                        if points.is_empty() {
+                            continue;
+                        }
+                        let mut feature = f.clone();
+                        feature.coords = points
+                            .into_iter()
+                            .map(|p| p.map(|v| (v * 1e6).round() / 1e6))
+                            .collect();
+                        feature.label.clear();
+                        tx.execute(
+                            "INSERT INTO overview(level,payload) VALUES (?,?)",
+                            rusqlite::params![level, serde_json::to_string(&feature)?],
+                        )?;
+                        tx.execute(
+                            "INSERT INTO bounds VALUES (?,?,?,?,?)",
+                            rusqlite::params![
+                                tx.last_insert_rowid(),
+                                f.bbox[0],
+                                f.bbox[2],
+                                f.bbox[1],
+                                f.bbox[3]
+                            ],
+                        )?;
+                        counts[i] += 1;
+                    }
                 }
             }
+            eprintln!("{}: {processed} subdivisions", t.id);
         }
-        eprintln!("{}: {processed} subdivisions", t.id);
+        ensure!(counts[2]>0,"No land polygons available for overview; auxiliary charts do not provide a complete overview");
+        let mtime = chart
+            .img
+            .path
+            .metadata()?
+            .modified()?
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs();
+        tx.execute(
+            "INSERT INTO metadata VALUES (?)",
+            [
+                json!({"format":1,"size":chart.img.size,"mtime":mtime,"title":chart.img.title})
+                    .to_string(),
+            ],
+        )?;
+        ensure!(!cancel(), "Overview build stopped during shutdown");
+        tx.commit()?;
+        let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+        ensure!(integrity == "ok", "Overview integrity check failed");
+        drop(db);
+        #[cfg(windows)]
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&temp, path)?;
+        println!(
+            "{}",
+            json!({"features_per_level":counts,"subdivisions":processed})
+        );
+        Ok(())
+    })();
+    if built.is_err() {
+        let _ = std::fs::remove_file(&temp);
     }
-    ensure!(counts[2]>0,"No land polygons available for overview; auxiliary charts do not provide a complete overview");
-    let mtime = chart
-        .img
-        .path
-        .metadata()?
-        .modified()?
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-    tx.execute(
-        "INSERT INTO metadata VALUES (?)",
-        [
-            json!({"format":1,"size":chart.img.size,"mtime":mtime,"title":chart.img.title})
-                .to_string(),
-        ],
-    )?;
-    tx.commit()?;
-    let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-    ensure!(integrity == "ok", "Overview integrity check failed");
-    drop(db);
-    std::fs::rename(&temp, path)?;
-    println!(
-        "{}",
-        json!({"features_per_level":counts,"subdivisions":processed})
-    );
-    Ok(())
+    built
 }

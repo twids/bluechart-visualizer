@@ -65,6 +65,11 @@ No charts, product-specific examples or private deployment configuration are bun
 Drag to pan, scroll/double-click or use the buttons to zoom. Arrow keys pan;
 plus/minus zoom; Home restores the initial view. The coverage button fits the
 selected chart.
+
+**3D view** toggles a perspective view of the chart plane, with a **Tilt** slider
+from 0–60°. Pan, zoom, search and object inspection also work when tilted. Terrain
+and seabed heights are not displayed. See [VISION.md](VISION.md) for the camera,
+format investigation and read-only marine section inventory tool.
 Hover over or tap points, lines and areas to inspect their readable type, chart
 label, available depth and coordinates. Unknown types retain their raw code and
 are explicitly marked as unidentified. Marine type names depend on geometry:
@@ -132,7 +137,7 @@ labels are bounded per request. Active requests and response buffers use additio
 At most two map jobs run concurrently. Cache locks cover lookups and insertion,
 not entire decodes. Superseded jobs are checked while queued and during decoding.
 Broad views use spatially indexed SQLite overview caches with three land-outline levels.
-An invalid cache revision is rejected. Missing overviews produce a visible warning.
+Missing or invalid overview caches are built in the background at startup and become available when complete. Broad views show a warning while a cache is unavailable; check server logs if building fails.
 
 ## Read API
 
@@ -195,7 +200,7 @@ two-client check for performance validation; no extensive benchmark suite is req
 
 Technical prototype, not for navigation. Symbols are simplified. Depth-area colors
 have no verified depth legend. Some labels and attributes are omitted. Light sectors,
-NET labels, Huffman coordinates, satellite imagery, 3D views and routing are not
+NET labels, Huffman coordinates, satellite imagery, terrain/seabed 3D and routing are not
 implemented. A chart providing these features can still expose supported 2D content.
 
 See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md). Software is GPL-3.0-only;

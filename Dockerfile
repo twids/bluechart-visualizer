@@ -3,7 +3,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY web ./web
-RUN cargo build --release --locked
+RUN cargo test --release --locked -j 2 && cargo build --release --locked -j 2
 
 FROM debian:bookworm-slim
 WORKDIR /app

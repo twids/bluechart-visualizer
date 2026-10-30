@@ -84,6 +84,15 @@ fn current(file: &Path, revision: &str) -> Result<()> {
 }
 
 pub fn ensure_indexes(catalog: &Catalog, root: &Path, cancel: &dyn Fn() -> bool) {
+    ensure_indexes_with_status(catalog, root, cancel, &|_| {});
+}
+
+pub fn ensure_indexes_with_status(
+    catalog: &Catalog,
+    root: &Path,
+    cancel: &dyn Fn() -> bool,
+    status: &dyn Fn(bool),
+) {
     for entry in &catalog.entries {
         if cancel() {
             break;
@@ -101,9 +110,11 @@ pub fn ensure_indexes(catalog: &Catalog, root: &Path, cancel: &dyn Fn() -> bool)
             "Search {}: building missing, stale or invalid index",
             entry.name
         );
+        status(true);
         if let Err(error) = build_with_cancel(chart, &destination, cancel) {
             eprintln!("Search {}: index build failed: {error:#}", entry.name);
         }
+        status(false);
     }
 }
 

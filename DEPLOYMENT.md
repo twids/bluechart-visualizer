@@ -43,6 +43,13 @@ the overview-building tool also writes to the cache directory.
 
 ## Build and start
 
+Production builds use the Linux Rust toolchain in the Docker build stage, which
+runs the Rust tests before producing the release binary. A Windows MSVC linker
+is not required for this deployment path. When Docker runs on another host,
+build an explicit source-only snapshot there and deploy the resulting versioned
+image through that host's Dockhand stack. A missing local `link.exe` must not be
+treated as a blocker for the Docker build; it affects native Windows builds only.
+
 ```sh
 docker compose config --quiet
 docker compose build

@@ -358,6 +358,8 @@ async fn search_api_scope_and_unavailable_indexes() {
     let app = App {
         catalog: Arc::new(catalog),
         search_root: root.into(),
+        search_building: Arc::new(AtomicBool::new(false)),
+        overview_building: Arc::new(AtomicBool::new(false)),
         search_slots: Arc::new(tokio::sync::Semaphore::new(2)),
         hosts: Arc::new(vec!["localhost".into()]),
         slots: Arc::new(tokio::sync::Semaphore::new(2)),

@@ -94,7 +94,8 @@ pub struct Chart {
     pub coverage: Bounds,
     pub cache: SharedCache,
     index: Mutex<LruCache<String, Arc<Vec<Sub>>>>,
-    overview: Option<std::path::PathBuf>,
+    overview: Mutex<Option<std::path::PathBuf>>,
+    pub overview_destination: Option<std::path::PathBuf>,
 }
 impl Chart {
     pub fn open(
@@ -157,7 +158,7 @@ impl Chart {
             })();
             match check {
                 Ok(()) => valid_overview = Some(p.into()),
-                Err(e) => warnings.push(format!("Overview: {e}")),
+                Err(e) => eprintln!("Overview: {e}"),
             }
         }
         Ok(Self {
@@ -169,8 +170,12 @@ impl Chart {
             coverage,
             cache,
             index: Mutex::new(LruCache::new(NonZeroUsize::new(4).unwrap())),
-            overview: valid_overview,
+            overview: Mutex::new(valid_overview),
+            overview_destination: overview.map(Path::to_path_buf),
         })
+    }
+    pub fn publish_overview(&self, path: &Path) {
+        *self.overview.lock().unwrap() = Some(path.to_path_buf());
     }
     fn tile(img: &Img, tre: &Part) -> Result<Tile> {
         let h = img.header(tre, 0x121)?;
@@ -614,7 +619,7 @@ impl Chart {
         let mut result = Vec::new();
         let mut used_overview = false;
         if effective <= 17 {
-            if let Some(path) = &self.overview {
+            if let Some(path) = self.overview.lock().unwrap().clone() {
                 let db = rusqlite::Connection::open_with_flags(
                     path,
                     rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -637,7 +642,7 @@ impl Chart {
                 used_overview = true;
             } else {
                 errors.push(
-                    "Overview cache missing: run bluechart build-overview for broad views.".into(),
+                    "Overview cache missing: building automatically at startup; check server logs if unavailable.".into(),
                 );
             }
         }
@@ -671,6 +676,6 @@ impl Chart {
         )
     }
     pub fn metadata(&self) -> Value {
-        json!({"chart_id":self.id,"title":self.img.title,"file_size":self.img.size,"block_size":self.img.block_size,"parts":self.img.parts.len(),"tiles":self.tiles.iter().map(|t|json!({"id":t.id,"bbox":t.bbox,"levels":t.levels,"subdivisions":t.levels.iter().map(|l|l.count).sum::<usize>()})).collect::<Vec<_>>(),"warnings":self.warnings,"initial_bbox":self.tiles[0].bbox,"coverage_bbox":self.coverage,"coverage_bounds":self.coverage,"overview_available":self.overview.is_some(),"limitations":["Technical prototype; not for navigation.","Simplified symbols; light sectors, NET labels, satellite imagery, 3D views and routing are not displayed."]})
+        json!({"chart_id":self.id,"title":self.img.title,"file_size":self.img.size,"block_size":self.img.block_size,"parts":self.img.parts.len(),"tiles":self.tiles.iter().map(|t|json!({"id":t.id,"bbox":t.bbox,"levels":t.levels,"subdivisions":t.levels.iter().map(|l|l.count).sum::<usize>()})).collect::<Vec<_>>(),"warnings":self.warnings,"initial_bbox":self.tiles[0].bbox,"coverage_bbox":self.coverage,"coverage_bounds":self.coverage,"overview_available":self.overview.lock().unwrap().is_some(),"limitations":["Technical prototype; not for navigation.","3D perspective shows the chart plane without terrain or seabed elevations.","Simplified symbols; light sectors, NET labels, satellite imagery and routing are not displayed."]})
     }
 }
